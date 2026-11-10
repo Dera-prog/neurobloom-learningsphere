@@ -197,14 +197,23 @@ export default async function handler(req, res) {
     const expires = Date.now() + CODE_TTL_MS
     const token = makeToken(contact.value, expires, code)
 
+    const mailgunConfigured = Boolean(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)
     const delivery =
       contact.kind === 'email'
         ? await sendEmail({ recipient: contact.value, learnerName: body.learnerName, code })
         : { delivered: false }
 
-    // No SMS provider is connected yet, and Mailgun may not be configured either.
-    // In that case the demonstration carries on with the code in the response;
-    // once a provider is connected this branch stops returning the code.
+    // Once a real sender is connected, a failed send must never fall back to
+    // showing the code in the response.
+    if (contact.kind === 'email' && mailgunConfigured && !delivery.delivered) {
+      return res.status(502).json({
+        error: 'send_failed',
+        message: 'We could not send the code. Try again in a moment.',
+      })
+    }
+
+    // With no sender configured, the demonstration carries on with the code in
+    // the response so the flow can be reviewed.
     const review = !delivery.delivered
     return res.status(200).json({
       ok: true,
