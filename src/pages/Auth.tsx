@@ -1360,7 +1360,7 @@ export function SignupPage() {
                     <button
                       type="button"
                       onClick={confirmOtp}
-                      disabled={otpBusy || otpCode.length !== 6 || !otpToken}
+                      disabled={otpBusy}
                       className="h-10 shrink-0 rounded-xl bg-primary px-4 text-[11px] font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Verify
