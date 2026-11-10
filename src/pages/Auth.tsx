@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Eye,
+  EyeOff,
   FileText,
   KeyRound,
   Mail,
@@ -122,9 +124,9 @@ function AuthShell({ children }: { children: ReactNode }) {
         </div>
         <p className="mx-auto mt-8 w-full max-w-md text-[10px] text-muted-foreground">
           © {new Date().getFullYear()} NeuroBloom LearningSphere · Need help?{' '}
-          <Link to="/parent/support" className="font-semibold text-primary hover:underline">
+          <a href="mailto:support@neurobloom.ng" className="inline-block px-1 py-2 font-semibold text-primary hover:underline">
             Contact support
-          </Link>
+          </a>
         </p>
       </main>
     </div>
@@ -229,6 +231,7 @@ export function LoginPage() {
   const justReset = params.get('reset') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   // Only carry a visitor forward when this page signed them in. A leftover
@@ -299,16 +302,26 @@ export function LoginPage() {
             <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold text-foreground">
               Password
             </label>
-            <input
-              id="login-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Your password"
-              className="h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10"
-              required
-            />
+            <div className="relative">
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Your password"
+                className={cn(fieldClass, 'pr-11')}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((shown) => !shown)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {justReset ? (
@@ -324,8 +337,11 @@ export function LoginPage() {
           <Button type="submit" size="lg" className="w-full" disabled={waiting || loading}>
             {waiting ? 'Signing you in…' : 'Sign in'} {waiting ? null : <ArrowRight size={15} />}
           </Button>
-          <p className="text-right">
-            <Link to="/forgot-password" className="text-[11px] font-semibold text-red-600 hover:underline">
+          <p className="-mt-1 text-right">
+            <Link
+              to="/forgot-password"
+              className="inline-flex min-h-11 items-center px-1 text-[11px] font-semibold text-red-600 hover:underline"
+            >
               Forgot password?
             </Link>
           </p>
@@ -333,7 +349,10 @@ export function LoginPage() {
 
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
           New to NeuroBloom LearningSphere?{' '}
-          <Link to={`/signup${next ? `?next=${encodeURIComponent(next)}` : ''}`} className="font-bold text-primary hover:underline">
+          <Link
+            to={`/signup${next ? `?next=${encodeURIComponent(next)}` : ''}`}
+            className="px-1 py-2 font-bold text-primary hover:underline"
+          >
             Create an account
           </Link>
         </p>
@@ -345,8 +364,11 @@ export function LoginPage() {
             </Link>
           </p>
         ) : null}
-        <p className="mt-6 text-center">
-          <Link to="/" className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+        <p className="mt-2 text-center">
+          <Link
+            to="/"
+            className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
             <ArrowLeft size={12} /> Back to home
           </Link>
         </p>
