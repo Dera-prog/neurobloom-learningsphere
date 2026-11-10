@@ -44,11 +44,9 @@ export default function Landing() {
             </a>
           </div>
           <div className="flex items-center gap-2">
-            {!signedIn ? (
-              <Link to="/login" className={buttonStyles('outline', 'md', 'px-5')}>
-                Sign in
-              </Link>
-            ) : null}
+            <Link to="/login" className={buttonStyles('outline', 'md', 'px-5')}>
+              Sign in
+            </Link>
           </div>
         </nav>
       </header>
