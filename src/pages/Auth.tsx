@@ -477,14 +477,6 @@ export function LoginPage() {
             <ArrowLeft size={12} /> Back to home
           </Link>
         </p>
-        <p className="mt-1 text-center">
-          <Link
-            to="/ops-admin"
-            className="inline-flex min-h-9 items-center px-2 text-[10px] font-semibold text-muted-foreground/80 hover:text-foreground"
-          >
-            Ops Admin sign-in
-          </Link>
-        </p>
       </div>
     </AuthShell>
   )
