@@ -177,32 +177,6 @@ function AuthShell({ children }: { children: ReactNode }) {
   )
 }
 
-function SignedInNote({
-  name,
-  continueTo,
-  onUseAnother,
-}: {
-  name: string
-  continueTo: string
-  onUseAnother: () => void
-}) {
-  return (
-    <div className="mb-4 rounded-xl border border-border bg-muted/60 p-3">
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        This browser is signed in as <span className="font-bold text-foreground">{name}</span>.
-      </p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Link to={continueTo} className={buttonStyles('primary', 'sm')}>
-          Continue to dashboard
-        </Link>
-        <button type="button" onClick={onUseAnother} className={buttonStyles('ghost', 'sm')}>
-          Use a different account
-        </button>
-      </div>
-    </div>
-  )
-}
-
 function DemoPanel({ role }: { role?: Audience | null }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -353,6 +327,11 @@ export function LoginPage() {
     profile && profile.role !== 'admin'
       ? { name: profile.full_name?.trim() || profile.email, role: profile.role, email: profile.email }
       : remembered
+  const signupQuery = new URLSearchParams()
+  if (roleHint) signupQuery.set('role', roleHint)
+  if (next) signupQuery.set('next', next)
+  const signupSearch = signupQuery.toString()
+  const signupHref = `/signup${signupSearch ? `?${signupSearch}` : ''}`
 
   if (!configured) {
     return (
@@ -451,7 +430,7 @@ export function LoginPage() {
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
           New to NeuroBloom LearningSphere?{' '}
           <Link
-            to={`/signup${next ? `?next=${encodeURIComponent(next)}` : ''}`}
+            to={signupHref}
             className="px-1 py-2 font-bold text-primary hover:underline"
           >
             Create an account
@@ -649,7 +628,7 @@ export function OpsAdminLoginPage() {
 }
 
 export function SignupPage() {
-  const { configured, session, profile, signUp, signOut } = useAuth()
+  const { configured, signUp } = useAuth()
   const { dispatch, ready } = useApp()
   const toast = useToast()
   const [params] = useSearchParams()
@@ -881,23 +860,26 @@ export function SignupPage() {
   return (
     <AuthShell>
       <div>
-        {session ? (
-          <SignedInNote
-            name={profile?.full_name?.trim() || profile?.email || session.user.email || 'this account'}
-            continueTo={next ?? (profile ? roleConfigs[profile.role].home : '/')}
-            onUseAnother={() => void signOut()}
-          />
-        ) : null}
-        <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
-          {isParent ? 'Create your parent account' : isTeacher ? 'Apply to teach' : 'Create your account'}
+        <h1 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight text-foreground">
+          <span aria-hidden>{roleConfigs[role].emoji}</span>
+          {roleConfigs[role].marketing.title}
         </h1>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          {isParent
-            ? 'One login to follow your child’s lessons, daily progress, teachers and specialist support.'
-            : isTeacher
-              ? 'Tell us what you teach so we can match you with the right classes and learners.'
-              : 'One account for learning, tutoring or keeping track of your child.'}
-        </p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{roleConfigs[role].marketing.description}</p>
+        <label className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          Wrong dashboard?
+          <select
+            value={role}
+            onChange={(event) => setRole(asAccountRole(event.target.value) ?? role)}
+            className="cursor-pointer bg-transparent font-bold text-primary underline underline-offset-2 outline-none"
+            aria-label="Change the dashboard you are signing up for"
+          >
+            {ACCOUNT_ROLES.map((item) => (
+              <option key={item} value={item}>
+                {roleConfigs[item].marketing.title}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <form onSubmit={submit} className="mt-6 space-y-3.5" noValidate>
           <label className="block text-left">
@@ -911,33 +893,6 @@ export function SignupPage() {
               className={fieldClass}
             />
           </label>
-
-          <div>
-            <span className="mb-1.5 block text-xs font-semibold text-foreground">I am a…</span>
-            <div className="grid grid-cols-2 gap-1.5">
-              {ACCOUNT_ROLES.map((item) => {
-                const config = roleConfigs[item]
-                const active = role === item
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setRole(item)}
-                    aria-pressed={active}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[11px] font-semibold transition',
-                      active
-                        ? 'border-primary/40 bg-primary/[0.06] text-primary'
-                        : 'border-border bg-card text-muted-foreground hover:bg-muted',
-                    )}
-                  >
-                    <span aria-hidden>{config.emoji}</span>
-                    <span className="truncate">{config.marketing.title.replace(' / Tutor', '').replace(' / Guardian', '')}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
 
           <label className="block text-left">
             <span className="mb-1.5 block text-xs font-semibold text-foreground">
