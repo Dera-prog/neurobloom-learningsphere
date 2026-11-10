@@ -218,7 +218,7 @@ function ErrorNote({ children }: { children: ReactNode }) {
 }
 
 export function LoginPage() {
-  const { configured, loading, session, profile, profileLoading, signIn, signOut } = useAuth()
+  const { configured, loading, session, profile, signIn } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const toast = useToast()
@@ -262,7 +262,7 @@ export function LoginPage() {
     setSignedIn(true)
   }
 
-  const waiting = busy || (Boolean(session) && profileLoading)
+  const waiting = busy
 
   if (!configured) {
     return (
@@ -275,25 +275,12 @@ export function LoginPage() {
   return (
     <AuthShell>
       <div>
-        {session && !signedIn ? (
-          <SignedInNote
-            name={profile?.full_name?.trim() || profile?.email || session.user.email || 'this account'}
-            continueTo={next ?? (profile ? roleConfigs[profile.role].home : '/')}
-            onUseAnother={() => void signOut()}
-          />
-        ) : null}
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
-        {profile ? (
-          <p className="mt-1 text-sm font-bold text-foreground">
-            {profile.full_name?.trim() || profile.email} for {roleConfigs[profile.role].marketing.title}
-          </p>
-        ) : (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {roleHint
-              ? `Sign in to open the ${roleConfigs[roleHint].marketing.title} dashboard.`
-              : 'Sign in to continue to your dashboard.'}
-          </p>
-        )}
+        <p className="mt-1 text-xs text-muted-foreground">
+          {roleHint
+            ? `Sign in to open the ${roleConfigs[roleHint].marketing.title} dashboard.`
+            : 'Sign in to continue to your dashboard.'}
+        </p>
 
         <form onSubmit={submit} className="mt-6 space-y-3.5" noValidate>
           <label className="block text-left">
