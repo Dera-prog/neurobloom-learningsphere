@@ -283,11 +283,17 @@ export function LoginPage() {
           />
         ) : null}
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {roleHint
-            ? `Sign in to open the ${roleConfigs[roleHint].marketing.title} dashboard.`
-            : 'Sign in to continue to your dashboard.'}
-        </p>
+        {profile ? (
+          <p className="mt-1 text-sm font-bold text-foreground">
+            {profile.full_name?.trim() || profile.email} for {roleConfigs[profile.role].marketing.title}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {roleHint
+              ? `Sign in to open the ${roleConfigs[roleHint].marketing.title} dashboard.`
+              : 'Sign in to continue to your dashboard.'}
+          </p>
+        )}
 
         <form onSubmit={submit} className="mt-6 space-y-3.5" noValidate>
           <label className="block text-left">
@@ -303,14 +309,9 @@ export function LoginPage() {
             />
           </label>
           <div className="text-left">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <label htmlFor="login-password" className="text-xs font-semibold text-foreground">
-                Password
-              </label>
-              <Link to="/forgot-password" className="text-[11px] font-semibold text-primary hover:underline">
-                Forgot password?
-              </Link>
-            </div>
+            <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold text-foreground">
+              Password
+            </label>
             <input
               id="login-password"
               type="password"
@@ -336,10 +337,15 @@ export function LoginPage() {
           <Button type="submit" size="lg" className="w-full" disabled={waiting || loading}>
             {waiting ? 'Signing you in…' : 'Sign in'} {waiting ? null : <ArrowRight size={15} />}
           </Button>
+          <p className="text-right">
+            <Link to="/forgot-password" className="text-[11px] font-semibold text-red-600 hover:underline">
+              Forgot password?
+            </Link>
+          </p>
         </form>
 
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
-          New to NeuroBloom?{' '}
+          New to NeuroBloom LearningSphere?{' '}
           <Link to={`/signup${next ? `?next=${encodeURIComponent(next)}` : ''}`} className="font-bold text-primary hover:underline">
             Create an account
           </Link>

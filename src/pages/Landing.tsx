@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { landingRoles, roleConfigs } from '../config/roles'
 import { parentAccessAddon, plans } from '../data/content'
+import { buttonStyles } from '../components/ui'
 import { cn, naira } from '../lib/utils'
 import { STORAGE_KEY } from '../store/store'
 import { useAuth } from '../lib/auth'
@@ -44,7 +45,7 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-2">
             {!signedIn ? (
-              <Link to="/login" className="hidden items-center py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground sm:block">
+              <Link to="/login" className={buttonStyles('outline', 'md', 'px-5')}>
                 Sign in
               </Link>
             ) : null}
@@ -108,7 +109,7 @@ export default function Landing() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {landingRoles.map((role, index) => {
               const config = roleConfigs[role]
-              const target = `/login?next=${encodeURIComponent(config.home)}&role=${role}`
+              const target = `/signup?role=${role}`
               return (
                 <Link
                   key={role}
@@ -149,7 +150,7 @@ export default function Landing() {
                       e.currentTarget.style.background = config.soft
                     }}
                   >
-                    Sign in <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                    Sign up <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </Link>
               )
