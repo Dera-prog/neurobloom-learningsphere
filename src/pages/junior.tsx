@@ -87,9 +87,7 @@ export function JuniorHome() {
         title={
           <span className="flex flex-col">
             <span>Welcome back</span>
-            <span className="mt-0.5 text-sm font-bold text-[color:var(--shell-fg)]">
-              Aderinola Segun for Junior Student
-            </span>
+            <span className="mt-0.5 text-sm font-bold text-[color:var(--shell-fg)]">Aderinola Segun</span>
           </span>
         }
         subtitle={`${longDate()} · ${assignments.length} tasks this week`}

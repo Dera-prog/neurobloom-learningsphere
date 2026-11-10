@@ -368,9 +368,7 @@ export function LoginPage() {
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
         {knownLearner ? (
           <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3">
-            <p className="text-sm font-bold text-foreground">
-              {knownLearner.name} for {roleConfigs[knownLearner.role].marketing.title}
-            </p>
+            <p className="text-sm font-bold text-foreground">{knownLearner.name}</p>
             <button
               type="button"
               onClick={forgetMe}
