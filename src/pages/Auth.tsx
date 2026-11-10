@@ -1279,7 +1279,7 @@ export function SignupPage() {
                   setResendIn(0)
                 }
               }}
-              placeholder={isLearner ? '080 1234 5678 or parent@example.com' : '080 1234 5678'}
+              placeholder="080 1234 5678"
               className={fieldClass}
             />
           </label>
