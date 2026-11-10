@@ -32,6 +32,14 @@ import {
 } from '../data/content'
 import { useAuth } from '../lib/auth'
 import { clearOnboardingPending, hasPendingOnboarding } from '../lib/onboarding'
+import {
+  CHILD_SLOTS,
+  demoChildRecords,
+  normalizeChildRecords,
+  takeSignupChildren,
+  type ChildRecord,
+  type ReportFile,
+} from '../lib/parent-children'
 import { paymentsConfigured } from '../lib/payments'
 import { supabase } from '../lib/supabase'
 
@@ -77,6 +85,9 @@ export interface AppState {
   // A signup keeps this on until the account builds up its own history; it is
   // persisted so signing out and back in never reveals the demo dashboard.
   newAccount: boolean
+  // Children entered by a guardian at signup. Demo accounts keep the two
+  // sample learners so their existing dashboards are unchanged.
+  children: ChildRecord[]
   points: number
   assignments: Assignment[]
   threads: Thread[]
@@ -129,6 +140,7 @@ export type Action =
   | { type: 'SET_PREF'; key: keyof Preferences; value: number | boolean | string }
   | { type: 'TOGGLE_AVAILABILITY'; day: string }
   | { type: 'ADD_REPORT'; report: ReportEntry }
+  | { type: 'SET_CHILD_REPORT'; child: ChildId; report: ReportFile }
   | { type: 'ADD_SUPPORT_REQUEST'; request: SupportRequest }
   | { type: 'MARK_ONBOARDING_STEP'; step: string }
   | { type: 'FINISH_ONBOARDING' }
@@ -144,6 +156,7 @@ function oneMonthFromNow() {
 function makeInitialState(): AppState {
   return {
     newAccount: false,
+    children: demoChildRecords(),
     points: 1180,
     assignments: initialAssignments.map((a) => ({ ...a })),
     threads: seedThreads.map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m })) })),
@@ -372,6 +385,16 @@ function reducer(state: AppState, action: Action): AppState {
       }
     case 'ADD_REPORT':
       return { ...state, reports: [action.report, ...state.reports] }
+    case 'SET_CHILD_REPORT': {
+      const index = CHILD_SLOTS.indexOf(action.child)
+      if (index < 0) return state
+      return {
+        ...state,
+        children: state.children.map((child, i) =>
+          i === index ? { ...child, report: action.report } : child,
+        ),
+      }
+    }
     case 'ADD_SUPPORT_REQUEST':
       return { ...state, supportRequests: [action.request, ...state.supportRequests] }
     case 'MARK_ONBOARDING_STEP': {
@@ -405,6 +428,7 @@ function normalizeState(parsed: Partial<AppState>): AppState {
     ...initial,
     ...parsed,
     newAccount: parsed.newAccount === true,
+    children: normalizeChildRecords(parsed.children),
     preferences: {
       ...initial.preferences,
       ...prefs,
@@ -443,7 +467,6 @@ interface StoreValue {
   dispatch: Dispatch<Action>
   ready: boolean
   threadsFor: (audience: Audience) => Thread[]
-  childName: (child: ChildId) => string
 }
 
 const StoreContext = createContext<StoreValue | null>(null)
@@ -451,6 +474,7 @@ const StoreContext = createContext<StoreValue | null>(null)
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const { configured, session } = useAuth()
   const userId = session?.user?.id ?? null
+  const email = session?.user?.email ?? undefined
   const [state, dispatch] = useReducer(reducer, undefined, () => (configured ? makeInitialState() : loadState()))
   const [ready, setReady] = useState(!configured)
   // Guards the autosave so a freshly hydrated page never writes back the same
@@ -483,9 +507,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const hasState = Boolean(stored && typeof stored === 'object' && Object.keys(stored).length > 0)
       // A signup marker plus no saved state means this is the account's first run.
       const firstRun = !hasState && hasPendingOnboarding(id)
+      const signupChildren = !hasState && firstRun ? takeSignupChildren(email) : []
       const next = hasState
         ? normalizeState(stored as Partial<AppState>)
-        : { ...makeInitialState(), newAccount: firstRun, onboarding: { complete: !firstRun, steps: [] } }
+        : {
+            ...makeInitialState(),
+            children: signupChildren.length ? signupChildren : demoChildRecords(),
+            newAccount: firstRun,
+            onboarding: { complete: !firstRun, steps: [] },
+          }
 
       // Do not write here: an eager snapshot of the first-run state can land
       // after the user finishes setup and overwrite it. Leaving syncedRef empty
@@ -557,7 +587,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       dispatch,
       ready,
       threadsFor: (audience) => state.threads.filter((t) => t.audience === audience),
-      childName: (child) => (child === 'tunde' ? 'Tunde Bakare' : 'Chidi Eze'),
     }),
     [state, ready],
   )

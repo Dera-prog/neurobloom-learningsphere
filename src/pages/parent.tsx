@@ -48,7 +48,6 @@ import { useToast } from '../components/toast'
 import { useApp } from '../store/store'
 import {
   billingHistory,
-  childrenData,
   parentAccessAddon,
   parentAlerts,
   parentTeachers,
@@ -61,18 +60,38 @@ import {
   type PlanId,
 } from '../data/content'
 import { cn, dayMonth, downloadCsv, downloadText, greeting, longDate, naira, nextMonthlyDay, uid } from '../lib/utils'
+import { orderedChildren, resolveChildren, type ResolvedChild } from '../lib/parent-children'
 import { useAuth } from '../lib/auth'
 import { NewUserDashboard } from '../components/onboarding'
+import { DailyProgressCard } from '../components/parent-daily-progress'
 import { looksLikeEmail, sendConfirmationEmail } from '../lib/email'
 import { applyCoupon, clearParentAccessIntent, listMyPayments, paymentsConfigured, startCheckout, type PaymentRow } from '../lib/payments'
 
-const childOrder: ChildId[] = ['tunde', 'chidi']
+// The guardian's own children come from signup; demo accounts keep the
+// seeded pair. Selection is clamped so a one-child account never falls
+// through to the unused second slot.
+function useParentChildren(preferred: ChildId = 'tunde') {
+  const { state, dispatch } = useApp()
+  const list = orderedChildren(state.children)
+  const [selected, setSelected] = useState<ChildId>(preferred)
+  const child = list.some((entry) => entry.slot === selected) ? selected : list[0].slot
+  const profiles = resolveChildren(state.children)
+  return { state, dispatch, list, child, setChild: setSelected, profile: profiles[child], profiles }
+}
 
-function ChildSwitch({ child, onChange }: { child: ChildId; onChange: (c: ChildId) => void }) {
+function ChildSwitch({
+  child,
+  onChange,
+  children,
+}: {
+  child: ChildId
+  onChange: (c: ChildId) => void
+  children: ResolvedChild[]
+}) {
   return (
     <div className="flex flex-wrap gap-2" role="tablist" aria-label="Choose child">
-      {childOrder.map((id) => {
-        const profile = childrenData[id]
+      {children.map((profile) => {
+        const id = profile.slot
         const active = child === id
         return (
           <button
@@ -91,7 +110,9 @@ function ChildSwitch({ child, onChange }: { child: ChildId; onChange: (c: ChildI
             </span>
             <span className="min-w-0">
               <span className="block truncate text-xs font-bold text-foreground">{profile.name}</span>
-              <span className="block text-[10px] text-muted-foreground">{profile.level} · {profile.id === 'chidi' ? 'ASD support' : 'Junior secondary'}</span>
+              <span className="block text-[10px] text-muted-foreground">
+                {profile.level} · {profile.specialNeeds ? 'Specialist support' : 'Mainstream class'}
+              </span>
             </span>
             {active ? <CheckCircle2 size={16} className="ml-auto shrink-0 text-role" /> : null}
           </button>
@@ -106,30 +127,30 @@ function planName(id: string) {
 }
 
 export function ParentHome() {
-  const { state, dispatch } = useApp()
+  const { state, dispatch, list, child, setChild, profile } = useParentChildren()
   const { profile: account } = useAuth()
-  const [child, setChild] = useState<ChildId>('tunde')
 
   if (account?.role === 'parent' && state.newAccount) {
     return <NewUserDashboard role="parent" />
   }
 
-  const profile = childrenData[child]
   const planId = state.plans[child]
-  const alerts = parentAlerts.filter((a) => a.child === child)
+  const alerts = profile.hasHistory ? parentAlerts.filter((a) => a.child === child) : []
   const unread = state.alertsRead ? 0 : alerts.filter((a) => a.tone !== 'info').length
 
   return (
     <RoleLayout role="parent">
       <PageHeader
-        title={`${greeting()}, Mrs. Bakare`}
-        subtitle={`${longDate()} · Monitoring 2 children`}
+        title={`${greeting()}, ${account?.full_name?.split(' ')[0] || 'parent'}`}
+        subtitle={`${longDate()} · Monitoring ${list.length === 1 ? '1 child' : `${list.length} children`}`}
         badge={<RoleBadge role="parent" />}
         actions={<HeaderActions role="parent" />}
       />
 
       <div className="mx-auto max-w-[1400px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
+
+        <DailyProgressCard childrenList={list} />
 
         <Card className="relative overflow-hidden border-0 bg-[image:var(--hero-gradient)] p-5 text-white sm:p-6">
           <div className="pointer-events-none absolute -right-12 -top-16 h-56 w-56 rounded-full bg-white/10 blur-2xl" aria-hidden />
@@ -142,7 +163,7 @@ export function ParentHome() {
                 <span aria-hidden>{profile.emoji}</span> {profile.name}
               </h2>
               <p className="mt-1.5 text-sm text-white/75">
-                {profile.level} · {profile.special ? 'Specialist-supported learning' : 'Junior secondary'} · {profile.streak} streak
+                {profile.level} · {profile.specialNeeds ? 'Specialist-supported learning' : 'Mainstream class'} · {profile.streak} streak
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link to="/parent/progress" className={buttonStyles('primary', 'md', '!bg-white !text-[#334155] hover:!bg-white/90')}>
@@ -176,7 +197,7 @@ export function ParentHome() {
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatCard label={profile.averageLabel} value={`${profile.average}%`} icon={TrendingUp} color="#64748b" soft="#f1f5f9" trend={{ value: profile.averageTrend }} />
-          <StatCard label="Attendance" value={`${profile.attendance}%`} icon={CalendarCheck} color="#10b981" soft="#ecfdf5" sub={profile.attendanceLabel} />
+          <StatCard label="Attendance" value={`${profile.attendance}%`} icon={CalendarCheck} color="#5b6574" soft="#e9ebee" sub={profile.attendanceLabel} />
           <StatCard label="Work completed" value={profile.workDone} icon={ClipboardList} color="#6c3fc5" soft="#f0eefb" sub={profile.workLabel} />
           <StatCard label="Learning streak" value={profile.streak} icon={Star} color="#f59e0b" soft="#fffbeb" sub={profile.streakLabel} />
         </div>
@@ -189,49 +210,67 @@ export function ParentHome() {
               icon={TrendingUp}
               action={<Link to="/parent/progress" className="inline-flex items-center py-2 text-[11px] font-bold text-role hover:underline">Full report</Link>}
             >
-              <TrendArea
-                data={profile.trend}
-                series={[
-                  { key: 'score', label: `${profile.name.split(' ')[0]}`, color: profile.color },
-                  { key: 'classAvg', label: 'Class average', color: '#94a3b8', dashed: true },
-                ]}
-                yDomain={[40, 100]}
-                height={240}
-              />
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border/70 pt-3 text-center">
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Latest</p>
-                  <p className="text-xs font-bold text-foreground">{profile.average}%</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Growth</p>
-                  <p className="text-xs font-bold text-emerald-600">{profile.averageTrend}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground">Class avg</p>
-                  <p className="text-xs font-bold text-foreground">{profile.trend[profile.trend.length - 1].classAvg}%</p>
-                </div>
-              </div>
+              {profile.trend.length ? (
+                <>
+                  <TrendArea
+                    data={profile.trend}
+                    series={[
+                      { key: 'score', label: `${profile.name.split(' ')[0]}`, color: profile.color },
+                      { key: 'classAvg', label: 'Class average', color: '#94a3b8', dashed: true },
+                    ]}
+                    yDomain={[40, 100]}
+                    height={240}
+                  />
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-border/70 pt-3 text-center">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Latest</p>
+                      <p className="text-xs font-bold text-foreground">{profile.average}%</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Growth</p>
+                      <p className="text-xs font-bold text-emerald-600">{profile.averageTrend}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">Class avg</p>
+                      <p className="text-xs font-bold text-foreground">{profile.trend[profile.trend.length - 1].classAvg}%</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <EmptyState
+                  emoji="📈"
+                  title="No results yet"
+                  description={`${profile.name.split(' ')[0]}’s scores appear here after the first assessment.`}
+                />
+              )}
             </SectionCard>
 
             <SectionCard title="Grades this term" subtitle="Continuous assessment and teacher remarks" icon={BookOpen}>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {profile.grades.map((g) => (
-                  <div key={g.code} className="rounded-xl border border-border/70 p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-bold text-foreground">{g.subject}</p>
-                        <p className="text-[10px] text-muted-foreground">{g.teacher}</p>
+              {profile.grades.length ? (
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {profile.grades.map((g) => (
+                    <div key={g.code} className="rounded-xl border border-border/70 p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-foreground">{g.subject}</p>
+                          <p className="text-[10px] text-muted-foreground">{g.teacher}</p>
+                        </div>
+                        <Badge tone="warn">{g.grade}</Badge>
                       </div>
-                      <Badge tone="warn">{g.grade}</Badge>
+                      <div className="mt-2 flex items-center gap-2">
+                        <ProgressBar value={g.score} color={g.color} height="h-1.5" label={`${g.subject} score`} />
+                        <span className="text-[10px] font-bold text-muted-foreground">{g.score}%</span>
+                      </div>
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <ProgressBar value={g.score} color={g.color} height="h-1.5" label={`${g.subject} score`} />
-                      <span className="text-[10px] font-bold text-muted-foreground">{g.score}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  emoji="📚"
+                  title="No grades yet"
+                  description="Continuous assessment scores and teacher remarks will show up here."
+                />
+              )}
             </SectionCard>
 
             <SectionCard title="Lesson completion" subtitle="How much of the term is complete" icon={BookOpen}>
@@ -257,7 +296,9 @@ export function ParentHome() {
               subtitle={`${alerts.length} updates for ${profile.name.split(' ')[0]}`}
               icon={Bell}
               action={
-                unread > 0 ? (
+                !profile.hasHistory ? (
+                  <Badge tone="neutral">No alerts yet</Badge>
+                ) : unread > 0 ? (
                   <button
                     type="button"
                     className="inline-flex items-center py-2 text-[11px] font-bold text-role hover:underline"
@@ -293,43 +334,53 @@ export function ParentHome() {
                   </div>
                 ))}
               </div>
-              {alerts.length === 0 ? <p className="py-6 text-center text-xs text-muted-foreground">No alerts for this child.</p> : null}
+              {alerts.length === 0 ? (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  {profile.hasHistory ? 'No alerts for this child.' : 'Alerts appear once lessons and assignments start.'}
+                </p>
+              ) : null}
             </SectionCard>
 
             <SectionCard title="This week" subtitle="Upcoming sessions and classes" icon={Clock}>
-              <div className="space-y-2">
-                {child === 'chidi'
-                  ? specialSupport.sessions.map((s) => (
-                      <div key={s.id} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
-                        <span className="text-lg" aria-hidden>{s.emoji}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[11px] font-bold text-foreground">{s.title}</p>
-                          <p className="text-[10px] text-muted-foreground">{s.when}</p>
+              {profile.hasHistory ? (
+                <div className="space-y-2">
+                  {profile.specialNeeds
+                    ? specialSupport.sessions.map((s) => (
+                        <div key={s.id} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
+                          <span className="text-lg" aria-hidden>{s.emoji}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[11px] font-bold text-foreground">{s.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{s.when}</p>
+                          </div>
+                          <Badge tone="role">{s.next.split(',')[0]}</Badge>
                         </div>
-                        <Badge tone="role">{s.next.split(',')[0]}</Badge>
-                      </div>
-                    ))
-                  : [
-                      { title: 'Mathematics', detail: 'Mr. Adeyemi · 10:00 AM', emoji: '🔢' },
-                      { title: 'English Language', detail: 'Mrs. Okafor · 12:00 PM', emoji: '📖' },
-                      { title: 'Basic Science', detail: 'Mr. Ibrahim · 2:00 PM', emoji: '🔬' },
-                    ].map((s) => (
-                      <div key={s.title} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
-                        <span className="text-lg" aria-hidden>{s.emoji}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[11px] font-bold text-foreground">{s.title}</p>
-                          <p className="text-[10px] text-muted-foreground">{s.detail}</p>
+                      ))
+                    : [
+                        { title: 'Mathematics', detail: 'Mr. Adeyemi · 10:00 AM', emoji: '🔢' },
+                        { title: 'English Language', detail: 'Mrs. Okafor · 12:00 PM', emoji: '📖' },
+                        { title: 'Basic Science', detail: 'Mr. Ibrahim · 2:00 PM', emoji: '🔬' },
+                      ].map((s) => (
+                        <div key={s.title} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
+                          <span className="text-lg" aria-hidden>{s.emoji}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[11px] font-bold text-foreground">{s.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{s.detail}</p>
+                          </div>
+                          <Badge tone="neutral">Class</Badge>
                         </div>
-                        <Badge tone="neutral">Class</Badge>
-                      </div>
-                    ))}
-              </div>
+                      ))}
+                </div>
+              ) : (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  No sessions scheduled yet. Classes appear here once the timetable is set.
+                </p>
+              )}
             </SectionCard>
 
             <SectionCard title="Subscription" subtitle={planName(planId)} icon={CreditCard} action={<Badge tone="warn">Renews 12 Nov</Badge>}>
               <p className="text-2xl font-extrabold text-foreground">{naira(plans.find((p) => p.id === planId)?.price ?? 8500)}<span className="text-xs font-semibold text-muted-foreground"> /month</span></p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {child === 'chidi' ? 'Specialist support, therapy activities and family sessions.' : 'General classes, assignments and feedback.'}
+                {profile.specialNeeds ? 'Specialist support, therapy activities and family sessions.' : 'General classes, assignments and feedback.'}
               </p>
               <Link to="/parent/subscriptions" className={buttonStyles('outline', 'sm', 'mt-3 w-full')}>
                 Manage subscription
@@ -337,20 +388,26 @@ export function ParentHome() {
             </SectionCard>
 
             <SectionCard title="Teachers" subtitle="Your child’s teaching team" icon={Users} action={<Link to="/parent/teachers" className="inline-flex items-center py-2 text-[11px] font-bold text-role hover:underline">All</Link>}>
-              <div className="space-y-2">
-                {parentTeachers[child].map((t) => (
-                  <div key={t.id} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: t.soft, color: t.color }} aria-hidden>{t.initials}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[11px] font-bold text-foreground">{t.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{t.subject}</p>
+              {profile.hasHistory ? (
+                <div className="space-y-2">
+                  {parentTeachers[child].map((t) => (
+                    <div key={t.id} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: t.soft, color: t.color }} aria-hidden>{t.initials}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[11px] font-bold text-foreground">{t.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{t.subject}</p>
+                      </div>
+                      <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-600">
+                        <Star size={10} className="fill-amber-400 text-amber-400" /> {t.rating}
+                      </span>
                     </div>
-                    <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-600">
-                      <Star size={10} className="fill-amber-400 text-amber-400" /> {t.rating}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  Teachers appear once {profile.name.split(' ')[0]} is placed in a class.
+                </p>
+              )}
             </SectionCard>
           </div>
         </div>
@@ -362,8 +419,7 @@ export function ParentHome() {
 export function ParentProgress() {
   const { state } = useApp()
   const toast = useToast()
-  const [child, setChild] = useState<ChildId>('tunde')
-  const profile = childrenData[child]
+  const { child, setChild, list, profile } = useParentChildren()
 
   const exportReport = () => {
     const lines = [
@@ -394,7 +450,7 @@ export function ParentProgress() {
       />
       <div className="mx-auto max-w-[1300px] space-y-5 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <ChildSwitch child={child} onChange={setChild} />
+          <ChildSwitch child={child} onChange={setChild} children={list} />
           <Button variant="outline" onClick={exportReport}>
             <Download size={15} /> Download report
           </Button>
@@ -402,7 +458,7 @@ export function ParentProgress() {
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard label={profile.averageLabel} value={`${profile.average}%`} icon={TrendingUp} color={profile.color} soft={profile.soft} trend={{ value: profile.averageTrend }} />
-          <StatCard label="Attendance" value={`${profile.attendance}%`} icon={CalendarCheck} color="#10b981" soft="#ecfdf5" sub={profile.attendanceLabel} />
+          <StatCard label="Attendance" value={`${profile.attendance}%`} icon={CalendarCheck} color="#5b6574" soft="#e9ebee" sub={profile.attendanceLabel} />
           <StatCard label="Work done" value={profile.workDone} icon={ClipboardList} color="#6c3fc5" soft="#f0eefb" sub={profile.workLabel} />
           <StatCard label="Streak" value={profile.streak} icon={Star} color="#f59e0b" soft="#fffbeb" sub={profile.streakLabel} />
         </div>
@@ -472,18 +528,21 @@ export function ParentProgress() {
 }
 
 export function ParentAttendance() {
-  const [child, setChild] = useState<ChildId>('tunde')
-  const profile = childrenData[child]
+  const { child, setChild, list, profile } = useParentChildren()
 
   const week = [
-    { day: 'Mon', subject: child === 'chidi' ? 'Speech & Language' : 'Mathematics' },
-    { day: 'Tue', subject: child === 'chidi' ? 'Emotional Regulation' : 'English Language' },
-    { day: 'Wed', subject: child === 'chidi' ? 'Social Skills Play' : 'Basic Science' },
-    { day: 'Thu', subject: child === 'chidi' ? 'Speech & Language' : 'Social Studies' },
-    { day: 'Fri', subject: child === 'chidi' ? 'Creative Expression' : 'Fine Arts' },
+    { day: 'Mon', subject: profile.specialNeeds ? 'Speech & Language' : 'Mathematics' },
+    { day: 'Tue', subject: profile.specialNeeds ? 'Emotional Regulation' : 'English Language' },
+    { day: 'Wed', subject: profile.specialNeeds ? 'Social Skills Play' : 'Basic Science' },
+    { day: 'Thu', subject: profile.specialNeeds ? 'Speech & Language' : 'Social Studies' },
+    { day: 'Fri', subject: profile.specialNeeds ? 'Creative Expression' : 'Fine Arts' },
   ].map((row, i) => ({
     ...row,
-    status: child === 'tunde' && i === 2 ? 'Absent' : child === 'chidi' && i === 4 ? 'Excused' : 'Present',
+    status: !profile.hasHistory
+      ? 'Upcoming'
+      : profile.specialNeeds
+        ? i === 4 ? 'Excused' : 'Present'
+        : i === 2 ? 'Absent' : 'Present',
     time: ['10:00 AM', '11:30 AM', '2:00 PM', '10:00 AM', '9:00 AM'][i],
   }))
 
@@ -500,13 +559,13 @@ export function ParentAttendance() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Attendance rate" value={`${profile.attendance}%`} icon={CalendarCheck} color="#10b981" soft="#ecfdf5" sub={profile.attendanceLabel} />
-          <StatCard label="Present this week" value={`${present}/5`} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub="Keep it up" />
+          <StatCard label="Attendance rate" value={`${profile.attendance}%`} icon={CalendarCheck} color="#5b6574" soft="#e9ebee" sub={profile.attendanceLabel} />
+          <StatCard label="Present this week" value={`${present}/5`} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub={profile.hasHistory ? 'Keep it up' : 'No classes yet'} />
           <StatCard label="Absences" value={absences} icon={AlertTriangle} color="#f97316" soft="#fff4e8" sub={excused ? `${excused} excused` : 'None excused'} />
-          <StatCard label="Punctuality" value="94%" icon={Clock} color="#0ea5e9" soft="#e8f4fd" sub="On time this month" />
+          <StatCard label="Punctuality" value={profile.hasHistory ? '94%' : '—'} icon={Clock} color="#0ea5e9" soft="#e8f4fd" sub="On time this month" />
         </div>
 
         <SectionCard title="This week" subtitle="Daily attendance record" icon={CalendarCheck}>
@@ -516,11 +575,17 @@ export function ParentAttendance() {
                 key={w.day}
                 className={cn(
                   'rounded-xl border p-2.5 text-center',
-                  w.status === 'Present' ? 'border-emerald-200 bg-emerald-50' : w.status === 'Excused' ? 'border-sky-200 bg-sky-50' : 'border-rose-200 bg-rose-50',
+                  w.status === 'Present'
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : w.status === 'Excused'
+                      ? 'border-sky-200 bg-sky-50'
+                      : w.status === 'Absent'
+                        ? 'border-rose-200 bg-rose-50'
+                        : 'border-border bg-muted/40',
                 )}
               >
                 <p className="text-[11px] font-bold text-foreground">{w.day}</p>
-                <p className="mt-1 text-lg" aria-hidden>{w.status === 'Present' ? '✅' : w.status === 'Excused' ? '🗓️' : '❌'}</p>
+                <p className="mt-1 text-lg" aria-hidden>{w.status === 'Present' ? '✅' : w.status === 'Excused' ? '🗓️' : w.status === 'Absent' ? '❌' : '·'}</p>
                 <p className="mt-0.5 text-[9px] font-semibold text-muted-foreground">{w.status}</p>
               </div>
             ))}
@@ -546,7 +611,7 @@ export function ParentAttendance() {
                     <td className="px-2 py-3 text-muted-foreground">{w.subject}</td>
                     <td className="px-2 py-3 text-muted-foreground">{w.time}</td>
                     <td className="px-2 py-3">
-                      <Badge tone={w.status === 'Present' ? 'success' : w.status === 'Excused' ? 'sky' : 'danger'}>{w.status}</Badge>
+                      <Badge tone={w.status === 'Present' ? 'success' : w.status === 'Excused' ? 'sky' : w.status === 'Absent' ? 'danger' : 'neutral'}>{w.status}</Badge>
                     </td>
                     <td className="px-2 py-3 text-right text-muted-foreground">1 hr</td>
                   </tr>
@@ -570,19 +635,19 @@ export function ParentAttendance() {
 export function ParentAssignments() {
   const { state } = useApp()
   const toast = useToast()
-  const [child, setChild] = useState<ChildId>('tunde')
-  const profile = childrenData[child]
+  const { child, setChild, list, profile } = useParentChildren()
   const assignments = state.assignments.filter((a) => a.stage === 'junior')
   const completedActivities = specialActivities.filter((a) => state.completedActivities.includes(a.id))
 
   const exportWork = () => {
-    if (child === 'tunde') {
-      downloadCsv('tunde-assignments.csv', [
+    const slug = profile.name.replace(/\s+/g, '-').toLowerCase()
+    if (!profile.specialNeeds) {
+      downloadCsv(`${slug}-assignments.csv`, [
         ['Assignment', 'Subject', 'Status', 'Score', 'Due'],
         ...assignments.map((a) => [a.title, a.subject, a.status, a.score !== undefined ? `${a.score}/${a.points}` : '—', a.dueLabel]),
       ])
     } else {
-      downloadCsv('chidi-activities.csv', [
+      downloadCsv(`${slug}-activities.csv`, [
         ['Activity', 'Tag', 'Minutes', 'Completed'],
         ...specialActivities.map((a) => [a.title, a.tag, a.minutes, state.completedActivities.includes(a.id) ? 'Yes' : 'No']),
       ])
@@ -600,13 +665,19 @@ export function ParentAssignments() {
       />
       <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <ChildSwitch child={child} onChange={setChild} />
+          <ChildSwitch child={child} onChange={setChild} children={list} />
           <Button variant="outline" onClick={exportWork}>
             <Download size={15} /> Export record
           </Button>
         </div>
 
-        {child === 'tunde' ? (
+        {!profile.hasHistory ? (
+          <EmptyState
+            emoji="🌱"
+            title="Nothing assigned yet"
+            description={`${profile.name.split(' ')[0]} has not started lessons. Assignments and activities will appear here.`}
+          />
+        ) : !profile.specialNeeds ? (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard label="Assignments" value={assignments.length} icon={ClipboardList} color="#64748b" soft="#f1f5f9" sub="This term" />
@@ -615,7 +686,7 @@ export function ParentAssignments() {
               <StatCard label="Average score" value="84%" icon={TrendingUp} color="#0ea5e9" soft="#e8f4fd" trend={{ value: '5%' }} />
             </div>
 
-            <SectionCard title="Tunde’s assignments" subtitle="Status visible to you and his teachers" icon={ClipboardList}>
+            <SectionCard title={`${profile.name.split(' ')[0]}’s assignments`} subtitle="Status visible to you and their teachers" icon={ClipboardList}>
               <div className="space-y-2.5">
                 {assignments.map((a) => (
                   <div key={a.id} className="flex flex-col gap-2.5 rounded-xl border border-border/70 p-3 sm:flex-row sm:items-center">
@@ -647,7 +718,7 @@ export function ParentAssignments() {
               <StatCard label="Awards" value={specialAwards.filter((a) => a.earned).length} icon={Star} color="#f59e0b" soft="#fffbeb" sub="Earned so far" />
             </div>
 
-            <SectionCard title="Chidi’s learning activities" subtitle="Therapy-oriented and creative practice" icon={HeartHandshake}>
+            <SectionCard title={`${profile.name.split(' ')[0]}’s learning activities`} subtitle="Therapy-oriented and creative practice" icon={HeartHandshake}>
               <div className="space-y-2.5">
                 {specialActivities.map((a) => {
                   const done = state.completedActivities.includes(a.id)
@@ -668,7 +739,7 @@ export function ParentAssignments() {
             <Card className="rounded-3xl border-role bg-role-soft/60 p-4">
               <p className="text-xs font-bold text-role-ink">Specialist progress note</p>
               <p className="mt-1 text-[11px] leading-relaxed text-role-ink">
-                Chidi completed {completedActivities.length} activities and practised naming feelings. Ms. Sarah recommends
+                {profile.name.split(' ')[0]} completed {completedActivities.length} activities and practised naming feelings. Ms. Sarah recommends
                 continuing the visual schedule at home. View the full support plan under Special Support.
               </p>
               <Link to="/parent/support" className={buttonStyles('outline', 'sm', 'mt-3')}>
@@ -683,11 +754,12 @@ export function ParentAssignments() {
 }
 
 export function ParentTeachers() {
-  const [child, setChild] = useState<ChildId>('tunde')
+  const { child, setChild, list, profile } = useParentChildren()
+  const { profile: account } = useAuth()
   const [contact, setContact] = useState<string | null>(null)
   const toast = useToast()
-  const profile = childrenData[child]
-  const teachers = parentTeachers[child]
+  const teachers = profile.hasHistory ? parentTeachers[child] : []
+  const author = account?.full_name?.trim() || 'Parent'
 
   return (
     <RoleLayout role="parent">
@@ -698,7 +770,7 @@ export function ParentTeachers() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1100px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
         <Card className="flex flex-wrap items-center justify-between gap-3 bg-role-soft/50 p-4">
           <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
@@ -759,7 +831,7 @@ export function ParentTeachers() {
         to={contact ?? ''}
         subtitle={`${profile.name}’s teacher`}
         audience="parent"
-        author="Mrs. Ngozi Bakare"
+        author={author}
         emoji="👪"
       />
     </RoleLayout>
@@ -784,7 +856,7 @@ export function ParentSubscriptions() {
   const { state, dispatch } = useApp()
   const toast = useToast()
   const { profile: account } = useAuth()
-  const [child, setChild] = useState<ChildId>('tunde')
+  const { child, setChild, list, profile } = useParentChildren()
   const [pendingPlan, setPendingPlan] = useState<PlanId | null>(null)
   const [email, setEmail] = useState('')
   const [coupon, setCoupon] = useState('')
@@ -799,7 +871,6 @@ export function ParentSubscriptions() {
   })
   const announced = useRef(false)
   const [payments, setPayments] = useState<PaymentRow[] | null>(null)
-  const profile = childrenData[child]
   const current = state.plans[child]
   const childPayments = (payments ?? []).filter((p) => p.child_id === child && p.status === 'success')
   const lastPayment = childPayments[0] ?? null
@@ -840,7 +911,7 @@ export function ParentSubscriptions() {
     if (paidNotice.child) setChild(paidNotice.child)
     toast('Payment confirmed', {
       description: chosen
-        ? `${chosen.name} is active for ${childrenData[paidChild].name}.`
+        ? `${chosen.name} is active for ${resolveChildren(state.children)[paidChild].name}.`
         : 'Your new plan is active.',
       tone: 'success',
     })
@@ -895,7 +966,7 @@ export function ParentSubscriptions() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
         <Card className="flex flex-wrap items-center justify-between gap-3 bg-role-soft/60 p-4">
           <div>
@@ -1168,9 +1239,8 @@ export function ParentBilling() {
   const { state } = useApp()
   const toast = useToast()
   const { profile: account } = useAuth()
-  const [child, setChild] = useState<ChildId>('tunde')
+  const { child, setChild, list, profile } = useParentChildren()
   const [payments, setPayments] = useState<PaymentRow[] | null>(null)
-  const profile = childrenData[child]
   const current = state.plans[child]
   const plan = plans.find((p) => p.id === current) ?? plans[0]
   const access = state.parentAccess[child]
@@ -1235,7 +1305,7 @@ export function ParentBilling() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1100px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
         <Card className="p-5 sm:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1382,7 +1452,7 @@ export function ParentBilling() {
 export function ParentAccess() {
   const { state, dispatch } = useApp()
   const toast = useToast()
-  const [child, setChild] = useState<ChildId>('tunde')
+  const { child, setChild, list, profile } = useParentChildren()
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
   const [registerFlow] = useState(() => {
@@ -1394,7 +1464,6 @@ export function ParentAccess() {
   })
   const announced = useRef(false)
   const openedRegisterStep = useRef(false)
-  const profile = childrenData[child]
   const planId = state.plans[child]
   const eligible = PREMIUM_PLAN_IDS.includes(planId)
   const entry = state.parentAccess[child]
@@ -1464,7 +1533,7 @@ export function ParentAccess() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1000px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
         <Card className="overflow-hidden p-0">
           <div className="border-b border-border/70 bg-role-soft/50 p-5">
@@ -1597,9 +1666,11 @@ export function ParentAccess() {
 
 export function ParentMessages() {
   const { state } = useApp()
+  const { profile: account } = useAuth()
   const [contact, setContact] = useState<string | null>(null)
-  const [child, setChild] = useState<ChildId>('tunde')
-  const teachers = parentTeachers[child]
+  const { child, setChild, list, profile } = useParentChildren()
+  const teachers = profile.hasHistory ? parentTeachers[child] : []
+  const author = account?.full_name?.trim() || 'Parent'
   const unread = state.threads
     .filter((t) => t.audience === 'parent')
     .reduce((sum, t) => sum + (t.unread ?? 0), 0)
@@ -1614,12 +1685,12 @@ export function ParentMessages() {
       />
       <div className="mx-auto max-w-[1400px] space-y-5 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <ChildSwitch child={child} onChange={setChild} />
+          <ChildSwitch child={child} onChange={setChild} children={list} />
           <p className="text-[11px] text-muted-foreground">{state.threads.filter((t) => t.audience === 'parent').length} conversations</p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-          <SectionCard title="Quick contacts" subtitle={`${childrenData[child].name}’s team`} icon={MessageCircle}>
+          <SectionCard title="Quick contacts" subtitle={`${profile.name}’s team`} icon={MessageCircle}>
             <div className="space-y-2">
               {teachers.map((t) => (
                 <button type="button" key={t.id} onClick={() => setContact(t.name)} className="flex w-full items-center gap-2.5 rounded-lg border border-border/70 p-2.5 text-left transition hover:bg-muted/50">
@@ -1635,7 +1706,7 @@ export function ParentMessages() {
           </SectionCard>
 
           <Card className="p-3 sm:p-4">
-            <Messenger audience="parent" author="Mrs. Ngozi Bakare" />
+            <Messenger audience="parent" author={author} />
           </Card>
         </div>
       </div>
@@ -1646,7 +1717,7 @@ export function ParentMessages() {
         to={contact ?? ''}
         subtitle="Teacher conversation"
         audience="parent"
-        author="Mrs. Ngozi Bakare"
+        author={author}
         emoji="👪"
       />
     </RoleLayout>
@@ -1656,7 +1727,7 @@ export function ParentMessages() {
 export function ParentSafety() {
   const { state, dispatch } = useApp()
   const toast = useToast()
-  const [child, setChild] = useState<ChildId>('tunde')
+  const { child, setChild, list, profile } = useParentChildren()
   const [category, setCategory] = useState('Unkind message')
   const [detail, setDetail] = useState('')
 
@@ -1666,7 +1737,7 @@ export function ParentSafety() {
       type: 'ADD_REPORT',
       report: {
         id: uid('rp'),
-        child: childrenData[child].name,
+        child: profile.name,
         category,
         detail: detail.trim(),
         at: 'Just now',
@@ -1686,9 +1757,9 @@ export function ParentSafety() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1150px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
-        <Card className="flex flex-wrap items-center gap-3 border-0 bg-[linear-gradient(120deg,#052e22,#10b981)] p-5 text-white">
+        <Card className="flex flex-wrap items-center gap-3 border-0 bg-[image:var(--hero-gradient)] p-5 text-white">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15" aria-hidden><ShieldCheck size={24} /></span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-extrabold">Your child’s safety is our priority</p>
@@ -1698,7 +1769,7 @@ export function ParentSafety() {
         </Card>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <SectionCard title="Parental supervision" subtitle={`Applied to ${childrenData[child].name}`} icon={ShieldCheck}>
+          <SectionCard title="Parental supervision" subtitle={`Applied to ${profile.name}`} icon={ShieldCheck}>
             <div className="divide-y divide-border/60">
               <Toggle
                 checked={state.supervision.restrictMessaging}
@@ -1791,13 +1862,13 @@ export function ParentSupport() {
   const { state, dispatch } = useApp()
   const toast = useToast()
   const { configured, profile: account } = useAuth()
-  const [child, setChild] = useState<ChildId>('chidi')
+  const { child, setChild, list, profile } = useParentChildren('chidi')
   const [topic, setTopic] = useState('Speech therapy')
   const [message, setMessage] = useState('')
   const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)
-  const profile = childrenData[child]
-  const isSpecial = child === 'chidi'
+  const isSpecial = profile.specialNeeds
+  const specialChild = list.find((entry) => entry.specialNeeds) ?? null
   const requests = (state.supportRequests ?? []).filter((r) => r.child === profile.name)
 
   const submitSupport = async () => {
@@ -1853,19 +1924,28 @@ export function ParentSupport() {
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1250px] space-y-5 p-4 sm:p-6">
-        <ChildSwitch child={child} onChange={setChild} />
+        <ChildSwitch child={child} onChange={setChild} children={list} />
 
         {!isSpecial ? (
           <Card className="rounded-3xl border-role bg-role-soft/60 p-6 text-center">
             <span className="text-4xl" aria-hidden>🦋</span>
-            <p className="mt-2 text-lg font-extrabold text-role-ink">Special support is active for Chidi</p>
-            <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-              Chidi is on the Special Needs Premium plan with speech therapy, emotional regulation and social skills support.
-              Switch to Chidi to view goals, specialist notes and family guidance.
+            <p className="mt-2 text-lg font-extrabold text-role-ink">
+              {specialChild ? `Special support is active for ${specialChild.name}` : 'No special-needs learner on this account'}
             </p>
-            <Button className="mt-4" variant="role" onClick={() => setChild('chidi')}>
-              Open Chidi’s support plan
-            </Button>
+            <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+              {specialChild
+                ? `${specialChild.name} is on the Special Needs Premium plan with speech therapy, emotional regulation and social skills support. Switch to ${specialChild.name.split(' ')[0]} to view goals, specialist notes and family guidance.`
+                : 'Special Needs Premium covers speech therapy, emotional regulation and social skills support. Add a special-needs child to your account or contact support to set it up.'}
+            </p>
+            {specialChild ? (
+              <Button className="mt-4" variant="role" onClick={() => setChild(specialChild.slot)}>
+                Open {specialChild.name.split(' ')[0]}’s support plan
+              </Button>
+            ) : (
+              <Link to="/parent/subscriptions" className={buttonStyles('role', 'sm', 'mt-4')}>
+                View plans <ArrowRight size={13} />
+              </Link>
+            )}
           </Card>
         ) : (
           <>

@@ -1,13 +1,59 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Mail, ShieldCheck, Sparkles } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  FileText,
+  KeyRound,
+  Mail,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  UploadCloud,
+  X,
+} from 'lucide-react'
 import type { Audience } from '../data/content'
 import { landingRoles, roleConfigs } from '../config/roles'
 import { ACCOUNT_ROLES, asAccountRole, asRole, useAuth } from '../lib/auth'
 import { looksLikeEmail } from '../lib/email'
+import { CLASS_LEVELS, CHILD_SLOTS, saveSignupChildren, uploadEvaluationReport, type ChildRecord } from '../lib/parent-children'
 import { Button, buttonStyles } from '../components/ui'
 import { cn } from '../lib/utils'
 import { useToast } from '../components/toast'
+import { useApp } from '../store/store'
+
+const TEACHER_SUBJECTS = [
+  'Mathematics',
+  'English Language',
+  'Basic Science',
+  'Basic Technology',
+  'Social Studies',
+  'Computer Science',
+  'Biology',
+  'Chemistry',
+  'Physics',
+  'Further Mathematics',
+  'Economics',
+  'Government',
+  'Literature in English',
+  'Special Needs Support',
+]
+const QUALIFICATIONS = ['B.Ed', 'B.Sc / B.A', 'PGDE', 'M.Ed', 'Ph.D', 'Other']
+const EXPERIENCE_LEVELS = ['Less than 1 year', '1–3 years', '4–6 years', '7–10 years', 'Over 10 years']
+const TEACHING_LEVELS = ['Junior Secondary', 'Senior Secondary', 'Special Needs']
+const MAX_REPORT_BYTES = 10 * 1024 * 1024
+
+interface ChildDraft {
+  name: string
+  className: string
+  specialNeeds: boolean
+}
+
+const newChild = (): ChildDraft => ({ name: '', className: 'JSS1', specialNeeds: false })
+
+const fieldClass =
+  'h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10'
 
 function AuthShell({ children }: { children: ReactNode }) {
   return (
@@ -318,6 +364,8 @@ export function LoginPage() {
 
 export function SignupPage() {
   const { configured, session, profile, signUp, signOut } = useAuth()
+  const { dispatch, ready } = useApp()
+  const toast = useToast()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const requestedNext = params.get('next')
@@ -327,9 +375,52 @@ export function SignupPage() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
+  const [children, setChildren] = useState<ChildDraft[]>([newChild()])
+  const [subjects, setSubjects] = useState<string[]>([])
+  const [qualification, setQualification] = useState('')
+  const [experience, setExperience] = useState('')
+  const [teachingLevel, setTeachingLevel] = useState('')
+  const [reportFile, setReportFile] = useState<File | null>(null)
+  const [reportError, setReportError] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState('')
+
+  // Signup hands the children over through localStorage, but the store can
+  // hydrate before the report finishes uploading. Track readiness so the upload
+  // result lands in the live state instead of a marker nobody reads.
+  const readyRef = useRef(ready)
+  useEffect(() => {
+    readyRef.current = ready
+  }, [ready])
+
+  const isParent = role === 'parent'
+  const isTeacher = role === 'teacher'
+  const wantsReport = isParent && children.some((child) => child.specialNeeds)
+  const phoneNeeded = isParent || isTeacher
+
+  function updateChild(index: number, patch: Partial<ChildDraft>) {
+    setChildren((current) => current.map((child, i) => (i === index ? { ...child, ...patch } : child)))
+  }
+
+  function toggleSubject(subject: string) {
+    setSubjects((current) =>
+      current.includes(subject) ? current.filter((item) => item !== subject) : [...current, subject],
+    )
+  }
+
+  function pickReport(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null
+    event.target.value = ''
+    if (!file) return
+    if (file.size > MAX_REPORT_BYTES) {
+      setReportFile(null)
+      setReportError('That file is larger than 10 MB. Choose a smaller file.')
+      return
+    }
+    setReportError('')
+    setReportFile(file)
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -342,17 +433,106 @@ export function SignupPage() {
       setError('Enter a valid email address for confirmations.')
       return
     }
+    if (phoneNeeded && phone.replace(/\D/g, '').length < 7) {
+      setError(isParent ? 'Add the parent number we can reach you on.' : 'Add a phone number students can reach you on.')
+      return
+    }
+    if (isParent) {
+      if (children.some((child) => child.name.trim().length < 2)) {
+        setError('Add the name of each child you are registering.')
+        return
+      }
+      const names = children.map((child) => child.name.trim().toLowerCase())
+      if (new Set(names).size !== names.length) {
+        setError('Use a different name for each child.')
+        return
+      }
+    }
+    if (isTeacher) {
+      if (!subjects.length) {
+        setError('Choose at least one subject you teach.')
+        return
+      }
+      if (!qualification) {
+        setError('Select your highest qualification.')
+        return
+      }
+      if (!experience) {
+        setError('Select how long you have been teaching.')
+        return
+      }
+      if (!teachingLevel) {
+        setError('Choose the level you teach.')
+        return
+      }
+    }
     if (password.length < 8) {
       setError('Use a password of at least 8 characters.')
       return
     }
+
+    const records: ChildRecord[] = children.map((child) => ({
+      name: child.name.trim(),
+      className: child.className,
+      specialNeeds: child.specialNeeds,
+    }))
+
     setBusy(true)
-    const result = await signUp({ email, password, fullName, role, phone })
-    setBusy(false)
+    const result = await signUp({
+      email,
+      password,
+      fullName,
+      role,
+      phone,
+      children: isParent ? records : undefined,
+      teacher: isTeacher ? { subjects, qualification, experience, level: teachingLevel } : undefined,
+    })
     if (result.error) {
+      setBusy(false)
       setError(result.error)
       return
     }
+
+    if (isParent) {
+      saveSignupChildren(email, records)
+      // The report uploads into the new guardian's own storage folder, so it
+      // needs the session Supabase returns right after an auto-confirmed signup.
+      if (reportFile && result.userId && !result.needsConfirmation) {
+        const upload = await uploadEvaluationReport(reportFile, result.userId)
+        if (upload.path) {
+          const report = {
+            name: reportFile.name,
+            size: reportFile.size,
+            type: reportFile.type,
+            path: upload.path,
+            uploadedAt: new Date().toISOString(),
+          }
+          // Wait for the first hydration so the update is not overwritten by it.
+          for (let i = 0; i < 30 && !readyRef.current; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 200))
+          }
+          if (readyRef.current) {
+            records.forEach((record, index) => {
+              if (record.specialNeeds && CHILD_SLOTS[index]) {
+                dispatch({ type: 'SET_CHILD_REPORT', child: CHILD_SLOTS[index], report })
+              }
+            })
+          } else {
+            saveSignupChildren(
+              email,
+              records.map((record) => (record.specialNeeds ? { ...record, report } : record)),
+            )
+          }
+        } else {
+          toast('Evaluation report not uploaded', {
+            description: 'Your account is ready. Sign in, then attach the report from your parent dashboard.',
+            tone: 'warn',
+          })
+        }
+      }
+    }
+
+    setBusy(false)
     if (result.needsConfirmation) {
       setSentTo(email.trim())
       return
@@ -380,6 +560,23 @@ export function SignupPage() {
             We sent a confirmation link to <span className="font-bold text-foreground">{sentTo}</span>. Open it to
             activate your account, then come back and sign in.
           </p>
+          {isParent ? (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              {children.length === 1 ? 'Your child is' : 'Your children are'} saved. The parent dashboard will show
+              their names and daily progress as soon as you sign in.
+            </p>
+          ) : null}
+          {isTeacher ? (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Your subjects, qualification and teaching level are saved to your account.
+            </p>
+          ) : null}
+          {isParent && reportFile && !reportError ? (
+            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+              Keep <span className="font-bold">{reportFile.name}</span> handy — once your account is confirmed you can
+              attach it from the parent dashboard.
+            </p>
+          ) : null}
           <Link to="/login" className={buttonStyles('primary', 'lg', 'mt-5 w-full')}>
             Back to sign in
           </Link>
@@ -405,8 +602,16 @@ export function SignupPage() {
             onUseAnother={() => void signOut()}
           />
         ) : null}
-        <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Create your account</h1>
-        <p className="mt-1 text-xs text-muted-foreground">One account for learning, tutoring or keeping track of your child.</p>
+        <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
+          {isParent ? 'Create your parent account' : isTeacher ? 'Apply to teach' : 'Create your account'}
+        </h1>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          {isParent
+            ? 'One login to follow your child’s lessons, daily progress, teachers and specialist support.'
+            : isTeacher
+              ? 'Tell us what you teach so we can match you with the right classes and learners.'
+              : 'One account for learning, tutoring or keeping track of your child.'}
+        </p>
 
         <form onSubmit={submit} className="mt-6 space-y-3.5" noValidate>
           <label className="block text-left">
@@ -416,8 +621,8 @@ export function SignupPage() {
               autoComplete="name"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              placeholder="Amaka Achebe"
-              className="h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10"
+              placeholder={isParent ? 'Ngozi Bakare' : 'Amaka Achebe'}
+              className={fieldClass}
             />
           </label>
 
@@ -458,14 +663,20 @@ export function SignupPage() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
-              className="h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10"
+              className={fieldClass}
             />
           </label>
 
           <label className="block text-left">
             <span className="mb-1.5 flex items-baseline justify-between gap-2 text-xs font-semibold text-foreground">
-              Phone number
-              <span className="text-[10px] font-medium text-muted-foreground">Optional — for class reminders</span>
+              {isParent ? 'Parent number' : 'Phone number'}
+              <span className="text-[10px] font-medium text-muted-foreground">
+                {isParent
+                  ? 'Necessary — Parent Number'
+                  : isTeacher
+                    ? 'Necessary — for class scheduling'
+                    : 'Optional — guardian’s contact'}
+              </span>
             </span>
             <input
               type="tel"
@@ -474,7 +685,7 @@ export function SignupPage() {
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
               placeholder="080 1234 5678"
-              className="h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10"
+              className={fieldClass}
             />
           </label>
 
@@ -486,14 +697,234 @@ export function SignupPage() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="At least 8 characters"
-              className="h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10"
+              className={fieldClass}
             />
           </label>
+
+          {isParent ? (
+            <section className="space-y-2.5" aria-labelledby="children-heading">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 id="children-heading" className="text-xs font-semibold text-foreground">
+                  Your children
+                </h2>
+                <span className="text-[10px] font-medium text-muted-foreground">{children.length} of 2</span>
+              </div>
+              <p className="text-[10px] leading-relaxed text-muted-foreground">
+                Add the learner(s) you want to monitor. These names appear on your dashboard.
+              </p>
+
+              {children.map((child, index) => (
+                <div key={index} className="rounded-xl border border-border bg-card p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold text-foreground">Child {index + 1}</span>
+                    {children.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setChildren((current) => current.filter((_, i) => i !== index))}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground transition hover:text-destructive"
+                      >
+                        <X size={11} /> Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 space-y-2">
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-semibold text-muted-foreground">Child’s full name</span>
+                      <input
+                        type="text"
+                        value={child.name}
+                        onChange={(event) => updateChild(index, { name: event.target.value })}
+                        placeholder="Tunde Bakare"
+                        className={fieldClass}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-semibold text-muted-foreground">Class</span>
+                      <select
+                        value={child.className}
+                        onChange={(event) => updateChild(index, { className: event.target.value })}
+                        className={fieldClass}
+                      >
+                        {CLASS_LEVELS.map((level) => (
+                          <option key={level} value={level}>
+                            {level}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex items-start gap-2 rounded-lg bg-muted/60 px-2.5 py-2">
+                      <input
+                        type="checkbox"
+                        checked={child.specialNeeds}
+                        onChange={(event) => updateChild(index, { specialNeeds: event.target.checked })}
+                        className="mt-0.5 h-3.5 w-3.5 accent-primary"
+                      />
+                      <span className="text-[10px] leading-relaxed text-foreground">
+                        Registering this child for <span className="font-bold">special needs support</span>
+                        <span className="block text-muted-foreground">Autism, ADHD or other developmental support.</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+
+              {children.length < 2 ? (
+                <button
+                  type="button"
+                  onClick={() => setChildren((current) => [...current, newChild()])}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-2 text-[11px] font-semibold text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                >
+                  <Plus size={13} /> Add another child
+                </button>
+              ) : null}
+
+              {wantsReport ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold text-foreground">
+                    <FileText size={13} className="text-amber-700" /> Evaluation report
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                    Upload the child’s evaluation report. PDF preferred — we’ll take any format. Upload 1 supported
+                    file, max 10 MB. You’ll need to be signed into your NeuroBloom account to upload; this happens
+                    automatically when your account is created.
+                  </p>
+                  {reportFile ? (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-2">
+                      <FileText size={14} className="shrink-0 text-primary" />
+                      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-foreground">
+                        {reportFile.name}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        {(reportFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setReportFile(null)}
+                        aria-label="Remove the evaluation report"
+                        className="shrink-0 rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="mt-2 flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-dashed border-amber-300 bg-card px-3 py-2.5 text-[11px] font-semibold text-foreground transition hover:bg-amber-50">
+                      <UploadCloud size={14} /> Choose a file
+                      <input type="file" className="sr-only" onChange={pickReport} />
+                    </label>
+                  )}
+                  {reportError ? (
+                    <p role="alert" className="mt-1.5 text-[10px] font-medium text-destructive">
+                      {reportError}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {isTeacher ? (
+            <section className="space-y-3" aria-labelledby="teacher-heading">
+              <div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 id="teacher-heading" className="text-xs font-semibold text-foreground">
+                    Subjects you teach
+                  </h2>
+                  <span className="text-[10px] font-medium text-muted-foreground">{subjects.length} selected</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {TEACHER_SUBJECTS.map((subject) => {
+                    const active = subjects.includes(subject)
+                    return (
+                      <button
+                        key={subject}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleSubject(subject)}
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-[10px] font-semibold transition',
+                          active
+                            ? 'border-primary/40 bg-primary/[0.08] text-primary'
+                            : 'border-border bg-card text-muted-foreground hover:bg-muted',
+                        )}
+                      >
+                        {subject}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-semibold text-muted-foreground">Highest qualification</span>
+                  <select
+                    value={qualification}
+                    onChange={(event) => setQualification(event.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Select…</option>
+                    {QUALIFICATIONS.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[10px] font-semibold text-muted-foreground">Teaching experience</span>
+                  <select
+                    value={experience}
+                    onChange={(event) => setExperience(event.target.value)}
+                    className={fieldClass}
+                  >
+                    <option value="">Select…</option>
+                    {EXPERIENCE_LEVELS.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div>
+                <span className="mb-1 block text-[10px] font-semibold text-muted-foreground">Level you teach</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {TEACHING_LEVELS.map((level) => {
+                    const active = teachingLevel === level
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setTeachingLevel(level)}
+                        className={cn(
+                          'rounded-xl border px-2 py-2 text-[10px] font-semibold transition',
+                          active
+                            ? 'border-primary/40 bg-primary/[0.06] text-primary'
+                            : 'border-border bg-card text-muted-foreground hover:bg-muted',
+                        )}
+                      >
+                        {level}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {error ? <ErrorNote>{error}</ErrorNote> : null}
 
           <Button type="submit" size="lg" className="w-full" disabled={busy}>
-            {busy ? 'Creating your account…' : 'Create account'} {busy ? null : <ArrowRight size={15} />}
+            {busy
+              ? 'Creating your account…'
+              : isTeacher
+                ? 'Create teacher account'
+                : isParent
+                  ? 'Create parent account'
+                  : 'Create account'}{' '}
+            {busy ? null : <ArrowRight size={15} />}
           </Button>
         </form>
 

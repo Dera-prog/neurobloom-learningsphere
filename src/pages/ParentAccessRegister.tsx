@@ -208,6 +208,10 @@ export function ParentAccessRegisterPage() {
       setError('Enter a valid email address for confirmations and receipts.')
       return
     }
+    if (phone.replace(/\D/g, '').length < 7) {
+      setError('Add your parent number so the school can reach you.')
+      return
+    }
     if (password.length < 8) {
       setError('Use a password of at least 8 characters.')
       return
@@ -397,14 +401,14 @@ export function ParentAccessRegisterPage() {
                 placeholder="Ngozi Bakare"
               />
               <Input
-                label="Phone number"
+                label="Parent number"
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="080 1234 5678"
-                hint="Optional — for class reminders"
+                hint="Necessary — Parent Number"
               />
               <Input
                 label="Email address"

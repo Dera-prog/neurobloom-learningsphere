@@ -207,6 +207,7 @@ export interface ChildProfile {
   lessonCompletion: Array<{ name: string; value: number; color: string }>
   grades: Array<{ code: string; subject: string; grade: string; teacher: string; score: number; color: string }>
   trend: Array<{ label: string; score: number; classAvg: number }>
+  daily: { minutes: number; lessons: number; practice: number; streakDays: number; targetMinutes: number }
   special?: boolean
 }
 
@@ -895,6 +896,7 @@ export const childrenData: Record<ChildId, ChildProfile> = {
       { code: 'SOC', subject: 'Social Studies', grade: 'A-', teacher: 'Mrs. Bello', score: 81, color: '#f59e0b' },
     ],
     trend: [68, 71, 73, 76, 77, 79.3].map((score, i) => ({ label: trendMonths[i], score, classAvg: [66, 68, 69, 71, 72, 73][i] })),
+    daily: { minutes: 48, lessons: 3, practice: 86, streakDays: 7, targetMinutes: 60 },
   },
   chidi: {
     id: 'chidi',
@@ -926,6 +928,7 @@ export const childrenData: Record<ChildId, ChildProfile> = {
     ],
     trend: [52, 56, 61, 66, 70, 74].map((score, i) => ({ label: trendMonths[i], score, classAvg: [60, 61, 62, 63, 64, 65][i] })),
     special: true,
+    daily: { minutes: 35, lessons: 2, practice: 74, streakDays: 12, targetMinutes: 45 },
   },
 }
 

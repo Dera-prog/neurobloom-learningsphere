@@ -39,6 +39,8 @@ interface SignUpInput {
   fullName: string
   role: Audience
   phone?: string
+  children?: Array<{ name: string; className: string; specialNeeds: boolean; report?: unknown }>
+  teacher?: { subjects: string[]; qualification: string; experience: string; level: string }
 }
 
 interface AuthValue {
@@ -50,7 +52,7 @@ interface AuthValue {
   profile: Profile | null
   recovering: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string }>
-  signUp: (input: SignUpInput) => Promise<{ error?: string; needsConfirmation?: boolean }>
+  signUp: (input: SignUpInput) => Promise<{ error?: string; needsConfirmation?: boolean; userId?: string }>
   requestPasswordReset: (email: string) => Promise<{ error?: string }>
   updatePassword: (password: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
@@ -171,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error ? { error: friendlyAuthError(error.message) } : {}
   }, [])
 
-  const signUp = useCallback(async ({ email, password, fullName, role, phone }: SignUpInput) => {
+  const signUp = useCallback(async ({ email, password, fullName, role, phone, children, teacher }: SignUpInput) => {
     if (!supabase) return { error: 'Accounts aren’t connected in this build yet.' }
     const accountRole = asAccountRole(role)
     if (!accountRole) return { error: 'Choose the dashboard that fits you.' }
@@ -179,14 +181,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: email.trim(),
       password,
       options: {
-        data: { full_name: fullName.trim(), role: accountRole, phone: phone?.trim() || null },
+        data: {
+          full_name: fullName.trim(),
+          role: accountRole,
+          phone: phone?.trim() || null,
+          children: children ?? null,
+          teacher: teacher ?? null,
+        },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
     if (error) return { error: friendlyAuthError(error.message) }
     // The store picks this up when it first hydrates the new account.
     markOnboardingPending(data.user?.id)
-    return { needsConfirmation: !data.session }
+    return { needsConfirmation: !data.session, userId: data.user?.id }
   }, [])
 
   const requestPasswordReset = useCallback(async (email: string) => {

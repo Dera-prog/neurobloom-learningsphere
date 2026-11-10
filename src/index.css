@@ -344,7 +344,7 @@
   --color-input: #e2dbee;
   --color-ring: #6a5a8a;
 
-  --color-card: #d4cbe2;
+  --color-card: #c9c1d6;
 
   --shell-bg: #3b2263;
   --shell-surface: color-mix(in srgb, #3b2263 90%, transparent);
@@ -370,6 +370,50 @@
    so the toggle reads as part of the special portal palette. */
 [data-role="special"][data-theme="teal"] [aria-label="Dashboard theme"] button[aria-pressed="true"],
 [data-role="special"][data-theme="teal"] [aria-label="Dashboard theme"] button[aria-checked="true"] {
+  background: var(--role-accent);
+  color: #ffffff;
+}
+
+/* The parent portal drops the shared green for a deep neutral grey: charcoal
+   shell, dim grey cards and a slate accent. */
+[data-role="parent"][data-theme="teal"] {
+  --role-accent: #5b6574;
+  --role-soft: #e5e7eb;
+  --role-ink: #1f2937;
+
+  --color-primary: #2f3540;
+  --color-primary-foreground: #ffffff;
+  --color-background: #f1f2f4;
+  --color-muted: #e3e5e8;
+  --color-muted-foreground: #4b5563;
+  --color-border: rgba(47, 53, 64, 0.16);
+  --color-input: #e9ebee;
+  --color-ring: #5b6574;
+
+  --color-card: #d8dbe1;
+
+  --shell-bg: #2f3540;
+  --shell-surface: color-mix(in srgb, #2f3540 90%, transparent);
+  --shell-fg: #f3f4f6;
+  --shell-muted: color-mix(in srgb, #f3f4f6 72%, transparent);
+  --shell-border: color-mix(in srgb, #f3f4f6 16%, transparent);
+
+  --hero-gradient: linear-gradient(120deg, #242a33, #4b5563);
+  --soft-gradient: linear-gradient(135deg, #e5e7eb, #f1f2f4);
+}
+
+[data-role="parent"][data-theme="teal"] .shell-chip {
+  border-color: color-mix(in srgb, #f3f4f6 24%, transparent);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+}
+[data-role="parent"][data-theme="teal"] .shell-chip:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+[data-role="parent"][data-theme="teal"] [aria-label="Dashboard theme"] button[aria-pressed="true"],
+[data-role="parent"][data-theme="teal"] [aria-label="Dashboard theme"] button[aria-checked="true"] {
   background: var(--role-accent);
   color: #ffffff;
 }

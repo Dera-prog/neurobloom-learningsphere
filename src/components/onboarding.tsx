@@ -27,8 +27,10 @@ import { roleConfigs } from '../config/roles'
 import type { Audience } from '../data/content'
 import { useAuth } from '../lib/auth'
 import { clearOnboardingPending } from '../lib/onboarding'
+import { orderedChildren } from '../lib/parent-children'
 import { useApp } from '../store/store'
 import { cn, longDate } from '../lib/utils'
+import { DailyProgressCard } from './parent-daily-progress'
 
 export type AccountRole = Exclude<Audience, 'admin'>
 
@@ -298,6 +300,7 @@ export function NewUserDashboard({ role }: { role: AccountRole }) {
   // history to show yet, so the dashboard stays empty instead of borrowing
   // the sample content an established account sees.
   const setupDone = state.onboarding.complete
+  const kids = role === 'parent' ? orderedChildren(state.children) : []
 
   function completeStep(id: string) {
     if (!state.onboarding.steps.includes(id)) dispatch({ type: 'MARK_ONBOARDING_STEP', step: id })
@@ -373,6 +376,8 @@ export function NewUserDashboard({ role }: { role: AccountRole }) {
             </div>
           </div>
         </Card>
+
+        {role === 'parent' ? <DailyProgressCard childrenList={kids} /> : null}
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           {setupDone ? (

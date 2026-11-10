@@ -149,7 +149,9 @@ function themeOptionsFor(role?: Audience): ThemeOption[] {
             ? { label: 'Green', swatch: '#045c3f', aria: 'Dark green theme' }
             : role === 'special'
               ? { label: 'Purple', swatch: '#3b2263', aria: 'Deep purple theme' }
-              : { label: 'Teal', swatch: '#053e2f', aria: 'Dark teal theme' }
+              : role === 'parent'
+                ? { label: 'Grey', swatch: '#2f3540', aria: 'Dark grey theme' }
+                : { label: 'Teal', swatch: '#053e2f', aria: 'Dark teal theme' }
   return [
     { value: 'classic', label: 'Light', swatch: '#e5e7eb', aria: 'Light theme' },
     { value: 'teal', ...dark },
