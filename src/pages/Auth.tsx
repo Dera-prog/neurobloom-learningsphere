@@ -457,6 +457,282 @@ export function LoginPage() {
   )
 }
 
+function OpsAdminShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative min-h-dvh overflow-hidden bg-[#0f172a] text-white">
+      <div className="pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-[#475569]/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-[#1e293b] blur-3xl" />
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-6 sm:px-8">
+        <header className="flex items-center justify-between gap-3">
+          <Link to="/ops-admin" className="flex items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white" aria-hidden>
+              <ShieldCheck size={18} />
+            </span>
+            <span>
+              <span className="block text-base font-extrabold tracking-tight">NeuroBloom</span>
+              <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">OPS ADMIN</span>
+            </span>
+          </Link>
+          <Link
+            to="/login"
+            className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
+          >
+            Learner sign-in
+          </Link>
+        </header>
+        {children}
+        <p className="text-center text-[10px] text-white/40">
+          © {new Date().getFullYear()} NeuroBloom LearningSphere · Admin Manager access
+        </p>
+      </div>
+    </div>
+  )
+}
+
+const OPS_DUTIES = [
+  {
+    title: 'Approvals & moderation',
+    copy: 'Teacher applications, learner accounts and flagged reviews that need a decision.',
+  },
+  {
+    title: 'Finance & payouts',
+    copy: 'Sales, invoices, teacher payroll and settlement checks in one place.',
+  },
+  {
+    title: 'Platform health',
+    copy: 'Live signals, reports, feedback and support requests from every portal.',
+  },
+]
+
+export function OpsAdminLandingPage() {
+  return (
+    <OpsAdminShell>
+      <main id="main-content" tabIndex={-1} className="flex flex-1 items-center py-10 outline-none">
+        <div className="w-full">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
+            <ShieldCheck size={12} /> Admin / Super Admin
+          </span>
+          <h1 className="mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+            The Admin Manager console.
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
+            One operational home for the people, money and content behind NeuroBloom LearningSphere. Access is limited to
+            the operations team.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2.5">
+            <Link
+              to="/ops-admin/sign-in"
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-white px-5 text-sm font-bold text-[#0f172a] transition hover:bg-white/90"
+            >
+              Sign in to Admin Manager <ArrowRight size={15} />
+            </Link>
+            <Link
+              to="/ops-admin/sign-up"
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-white/25 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Create an admin account
+            </Link>
+          </div>
+
+          <div className="mt-10 grid gap-3 sm:grid-cols-3">
+            {OPS_DUTIES.map((duty) => (
+              <div key={duty.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-xs font-bold text-white">{duty.title}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/55">{duty.copy}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-8 max-w-xl text-[11px] leading-relaxed text-white/45">
+            Administrator accounts are issued by the NeuroBloom operations team. If you were invited, sign in with the
+            email on your invitation.
+          </p>
+        </div>
+      </main>
+    </OpsAdminShell>
+  )
+}
+
+export function OpsAdminSignupPage() {
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [level, setLevel] = useState<'admin' | 'super'>('admin')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const [reference, setReference] = useState('')
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    if (fullName.trim().length < 2) {
+      setError('Add the full name of the person who needs access.')
+      return
+    }
+    if (!looksLikeEmail(email)) {
+      setError('Enter a valid work email address.')
+      return
+    }
+    if (phone.replace(/\D/g, '').length < 7) {
+      setError('Add a phone number the operations team can reach you on.')
+      return
+    }
+    setReference(`OPS-${Date.now().toString(36).toUpperCase().slice(-6)}`)
+  }
+
+  if (reference) {
+    return (
+      <OpsAdminShell>
+        <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <CheckCircle2 size={24} />
+            </span>
+            <h1 className="mt-4 text-xl font-extrabold tracking-tight text-foreground">Request received</h1>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              The operations team reviews admin requests before any console access is issued. We’ll reply to{' '}
+              <span className="font-bold text-foreground">{email}</span> once the account is approved.
+            </p>
+            <p className="mt-3 rounded-xl border border-[#475569]/20 bg-[#475569]/5 px-3 py-2 text-[11px] font-medium text-[#334155]">
+              Reference {reference} · {level === 'super' ? 'Super Admin' : 'Admin'} access
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <Link to="/ops-admin/sign-in" className={buttonStyles('primary', 'lg', 'w-full')}>
+                Go to the admin sign-in
+              </Link>
+              <Link
+                to="/ops-admin"
+                className="inline-flex min-h-11 items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+              >
+                Back to Ops Admin
+              </Link>
+            </div>
+          </div>
+        </main>
+      </OpsAdminShell>
+    )
+  }
+
+  return (
+    <OpsAdminShell>
+      <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#475569]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#334155]">
+            <ShieldCheck size={12} /> Admin / Super Admin
+          </span>
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-foreground">Create an admin account</h1>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            Tell us who needs console access and what they will manage. The operations team approves every request before
+            an account is created.
+          </p>
+
+          <form onSubmit={submit} className="mt-5 space-y-3.5" noValidate>
+            <label className="block text-left">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground">Full name</span>
+              <input
+                type="text"
+                autoComplete="name"
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                placeholder="Your full name"
+                className={opsFieldClass}
+              />
+            </label>
+            <label className="block text-left">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground">Work email</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@neurobloom.ng"
+                className={opsFieldClass}
+              />
+            </label>
+            <label className="block text-left">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground">Work phone</span>
+              <input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="080 1234 5678"
+                className={opsFieldClass}
+              />
+            </label>
+            <div className="text-left">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground">Access level</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([
+                  ['admin', 'Admin'],
+                  ['super', 'Super Admin'],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLevel(value)}
+                    aria-pressed={level === value}
+                    className={cn(
+                      'flex items-center justify-between rounded-xl border px-3 py-2 text-[11px] font-semibold transition',
+                      level === value
+                        ? 'border-[#334155]/40 bg-[#475569]/10 text-[#1e293b]'
+                        : 'border-border bg-card text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {label}
+                    {level === value ? <CheckCircle2 size={13} /> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="block text-left">
+              <span className="mb-1.5 flex items-baseline justify-between gap-2 text-xs font-semibold text-foreground">
+                What will you manage?
+                <span className="text-[10px] font-medium text-muted-foreground">Optional</span>
+              </span>
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                rows={3}
+                placeholder="Approvals, payouts, moderation for the Lagos region."
+                className={cn(opsFieldClass, 'h-auto resize-none py-2')}
+              />
+            </label>
+
+            {error ? <ErrorNote>{error}</ErrorNote> : null}
+
+            <button
+              type="submit"
+              className="flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-[#334155] text-sm font-bold text-white transition hover:bg-[#1e293b]"
+            >
+              Request admin access <ArrowRight size={15} />
+            </button>
+            <p className="text-center text-[10px] leading-relaxed text-muted-foreground">
+              This sends a request only. An administrator account is created after the operations team approves it.
+            </p>
+          </form>
+
+          <p className="mt-4 text-center text-[11px] text-muted-foreground">
+            Already approved?{' '}
+            <Link to="/ops-admin/sign-in" className="px-1 py-2 font-bold text-primary hover:underline">
+              Sign in to Admin Manager
+            </Link>
+          </p>
+          <p className="mt-2 text-center">
+            <Link
+              to="/ops-admin"
+              className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft size={12} /> Back to Ops Admin
+            </Link>
+          </p>
+        </div>
+      </main>
+    </OpsAdminShell>
+  )
+}
+
 export function OpsAdminLoginPage() {
   const { configured, loading, session, profile, signIn } = useAuth()
   const navigate = useNavigate()
@@ -504,30 +780,9 @@ export function OpsAdminLoginPage() {
   }
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#0f172a] text-white">
-      <div className="pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-[#475569]/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-[#1e293b] blur-3xl" />
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-6 sm:px-8">
-        <header className="flex items-center justify-between gap-3">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white" aria-hidden>
-              <ShieldCheck size={18} />
-            </span>
-            <span>
-              <span className="block text-base font-extrabold tracking-tight">NeuroBloom</span>
-              <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">OPS ADMIN</span>
-            </span>
-          </Link>
-          <Link
-            to="/login"
-            className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
-          >
-            Learner sign-in
-          </Link>
-        </header>
-
-        <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
+    <OpsAdminShell>
+      <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#475569]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#334155]">
               <ShieldCheck size={12} /> Restricted access
             </span>
@@ -608,22 +863,23 @@ export function OpsAdminLoginPage() {
                 Learner sign-in
               </Link>
             </p>
-            <p className="mt-2 text-center">
-              <Link
-                to="/"
-                className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-              >
-                <ArrowLeft size={12} /> Back to home
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              Need console access?{' '}
+              <Link to="/ops-admin/sign-up" className="px-1 py-2 font-bold text-primary hover:underline">
+                Create an admin account
               </Link>
             </p>
-          </div>
-        </main>
-
-        <p className="text-center text-[10px] text-white/40">
-          © {new Date().getFullYear()} NeuroBloom LearningSphere · Admin Manager access
-        </p>
-      </div>
-    </div>
+            <p className="mt-2 text-center">
+              <Link
+                to="/ops-admin"
+                className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft size={12} /> Back to Ops Admin
+              </Link>
+            </p>
+        </div>
+      </main>
+    </OpsAdminShell>
   )
 }
 
@@ -865,21 +1121,6 @@ export function SignupPage() {
           {roleConfigs[role].marketing.title}
         </h1>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{roleConfigs[role].marketing.description}</p>
-        <label className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-          Wrong dashboard?
-          <select
-            value={role}
-            onChange={(event) => setRole(asAccountRole(event.target.value) ?? role)}
-            className="cursor-pointer bg-transparent font-bold text-primary underline underline-offset-2 outline-none"
-            aria-label="Change the dashboard you are signing up for"
-          >
-            {ACCOUNT_ROLES.map((item) => (
-              <option key={item} value={item}>
-                {roleConfigs[item].marketing.title}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <form onSubmit={submit} className="mt-6 space-y-3.5" noValidate>
           <label className="block text-left">
