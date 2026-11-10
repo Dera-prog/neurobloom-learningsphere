@@ -143,7 +143,7 @@ export const roleConfigs: Record<Audience, RoleConfig> = {
   },
   special: {
     role: 'special',
-    label: 'Special Needs',
+    label: 'Special',
     portal: 'Special Needs Learning',
     emoji: '🦋',
     accent: '#a855f7',

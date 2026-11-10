@@ -129,7 +129,7 @@ export function SpecialHome() {
                 </Button>
               </div>
             </div>
-            <div className="rounded-3xl bg-white/75 p-4 backdrop-blur-sm">
+            <div className="rounded-3xl bg-card/75 p-4 backdrop-blur-sm">
               <p className="text-[11px] font-bold uppercase tracking-wide text-[#8b84a5]">My calm streak</p>
               <div className="mt-2 flex items-center gap-4">
                 <Ring value={70} size={94} stroke={8} color="var(--role-accent)" track="var(--role-soft)">
@@ -235,7 +235,7 @@ export function SpecialHome() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <p className="truncate text-xs font-bold text-role-ink">{a.title}</p>
-                          {done ? <CheckCircle2 size={13} className="shrink-0 text-emerald-500" /> : null}
+                          {done ? <CheckCircle2 size={13} className="shrink-0 text-role" /> : null}
                         </div>
                         <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">{a.tag} · {a.minutes} min</p>
                         <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold" style={{ color: a.color }}>
@@ -601,7 +601,7 @@ export function SpecialAwards() {
               </span>
               <p className="mt-3 text-sm font-bold text-role-ink">{a.title}</p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{a.description}</p>
-              <p className={cn('mt-2 text-[10px] font-bold', a.earned ? 'text-emerald-600' : 'text-muted-foreground')}>
+              <p className={cn('mt-2 text-[10px] font-bold', a.earned ? 'text-role-ink' : 'text-muted-foreground')}>
                 {a.earned ?? 'Keep practising'}
               </p>
             </Card>

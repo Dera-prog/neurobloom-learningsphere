@@ -328,6 +328,52 @@
   color: #ffffff;
 }
 
+/* The special-needs portal trades the shared green for a calm deep purple:
+   plum shell, dim greyish-purple cards and a desaturated purple accent. */
+[data-role="special"][data-theme="teal"] {
+  --role-accent: #6a5a8a;
+  --role-soft: #e7e0f2;
+  --role-ink: #3f3159;
+
+  --color-primary: #3b2263;
+  --color-primary-foreground: #ffffff;
+  --color-background: #ece6f3;
+  --color-muted: #ddd4ea;
+  --color-muted-foreground: #564a6b;
+  --color-border: rgba(59, 34, 99, 0.18);
+  --color-input: #e2dbee;
+  --color-ring: #6a5a8a;
+
+  --color-card: #d4cbe2;
+
+  --shell-bg: #3b2263;
+  --shell-surface: color-mix(in srgb, #3b2263 90%, transparent);
+  --shell-fg: #f2edfa;
+  --shell-muted: color-mix(in srgb, #f2edfa 72%, transparent);
+  --shell-border: color-mix(in srgb, #f2edfa 16%, transparent);
+
+  --hero-gradient: linear-gradient(120deg, #291546, #6a5a8a);
+  --soft-gradient: linear-gradient(135deg, #e7e0f2, #efeaf6);
+}
+
+[data-role="special"][data-theme="teal"] .shell-chip {
+  border-color: color-mix(in srgb, #f2edfa 24%, transparent);
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2edfa;
+}
+[data-role="special"][data-theme="teal"] .shell-chip:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+/* The active theme pill drops the white fill for the dim greyish-purple accent
+   so the toggle reads as part of the special portal palette. */
+[data-role="special"][data-theme="teal"] [aria-label="Dashboard theme"] button[aria-pressed="true"],
+[data-role="special"][data-theme="teal"] [aria-label="Dashboard theme"] button[aria-checked="true"] {
+  background: var(--role-accent);
+  color: #ffffff;
+}
+
 * {
   border-color: var(--color-border);
 }
