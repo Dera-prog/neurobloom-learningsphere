@@ -1004,6 +1004,7 @@ export function SignupPage() {
       setOtpVerified(true)
       setOtpNotice('')
       setOtpCode('')
+      setError('')
     } catch {
       setOtpError('Could not reach the OTP service. Try again.')
     } finally {
