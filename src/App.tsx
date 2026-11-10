@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import { Compass, Home } from 'lucide-react'
 import Landing from './pages/Landing'
-import { AuthCallbackPage, ForgotPasswordPage, LoginPage, ResetPasswordPage, SignupPage } from './pages/Auth'
+import { AuthCallbackPage, ForgotPasswordPage, LoginPage, OpsAdminLoginPage, ResetPasswordPage, SignupPage } from './pages/Auth'
 import { PaymentCallbackPage } from './pages/PaymentCallback'
 import { ParentAccessRegisterPage } from './pages/ParentAccessRegister'
 import { RequireRole } from './components/guards'
@@ -74,6 +74,7 @@ import { buttonStyles } from './components/ui'
 const routeTitles: Record<string, string> = {
   '/': 'NeuroBloom LearningSphere',
   '/login': 'Sign in · NeuroBloom',
+  '/ops-admin': 'Ops Admin sign-in · NeuroBloom',
   '/signup': 'Create account · NeuroBloom',
   '/parent-access/register': 'Parent Access registration · NeuroBloom',
   '/auth/callback': 'Signing you in · NeuroBloom',
@@ -197,6 +198,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/ops-admin" element={<OpsAdminLoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/parent-access/register" element={<ParentAccessRegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />

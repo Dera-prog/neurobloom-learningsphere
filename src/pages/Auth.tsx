@@ -57,6 +57,12 @@ const newChild = (): ChildDraft => ({ name: '', className: 'JSS1', specialNeeds:
 const fieldClass =
   'h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-primary/40 focus:bg-card focus:ring-2 focus:ring-primary/10'
 
+const opsFieldClass =
+  'h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-[#475569]/40 focus:bg-card focus:ring-2 focus:ring-[#475569]/10'
+
+const DEMO_ADMIN_EMAIL = 'admin.demo@example.com'
+const DEMO_ADMIN_PASSWORD = 'NeuroBloomDemo2026!'
+
 function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[1.05fr_1fr]">
@@ -238,6 +244,18 @@ export function LoginPage() {
   // session must not skip the sign-in screen and drop them into an old dashboard.
   const [signedIn, setSignedIn] = useState(false)
 
+  // Browsers can restore the saved demo administrator login here. That account
+  // belongs on /ops-admin, so drop it from the public form if it turns up.
+  useEffect(() => {
+    const drop = () => {
+      setEmail((value) => (value === DEMO_ADMIN_EMAIL ? '' : value))
+      setPassword((value) => (value === DEMO_ADMIN_PASSWORD ? '' : value))
+    }
+    drop()
+    const timers = [setTimeout(drop, 250), setTimeout(drop, 900)]
+    return () => timers.forEach(clearTimeout)
+  }, [])
+
   useEffect(() => {
     if (!configured || loading || !signedIn || !session || !profile) return
     navigate(next ?? roleConfigs[profile.role].home, { replace: true })
@@ -279,11 +297,17 @@ export function LoginPage() {
     <AuthShell>
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {roleHint
-            ? `Sign in to open the ${roleConfigs[roleHint].marketing.title} dashboard.`
-            : 'Sign in to continue to your dashboard.'}
-        </p>
+        {profile && profile.role !== 'admin' ? (
+          <p className="mt-1 text-sm font-bold text-foreground">
+            {profile.full_name?.trim() || profile.email} for {roleConfigs[profile.role].marketing.title}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {roleHint
+              ? `Sign in to open the ${roleConfigs[roleHint].marketing.title} dashboard.`
+              : 'Sign in to continue to your dashboard.'}
+          </p>
+        )}
 
         <form onSubmit={submit} className="mt-6 space-y-3.5" noValidate>
           <label className="block text-left">
@@ -372,8 +396,179 @@ export function LoginPage() {
             <ArrowLeft size={12} /> Back to home
           </Link>
         </p>
+        <p className="mt-1 text-center">
+          <Link
+            to="/ops-admin"
+            className="inline-flex min-h-9 items-center px-2 text-[10px] font-semibold text-muted-foreground/80 hover:text-foreground"
+          >
+            Ops Admin sign-in
+          </Link>
+        </p>
       </div>
     </AuthShell>
+  )
+}
+
+export function OpsAdminLoginPage() {
+  const { configured, loading, session, profile, signIn } = useAuth()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [email, setEmail] = useState(DEMO_ADMIN_EMAIL)
+  const [password, setPassword] = useState(DEMO_ADMIN_PASSWORD)
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [signedIn, setSignedIn] = useState(false)
+
+  useEffect(() => {
+    if (!configured || !signedIn || !session || !profile) return
+    navigate(profile.role === 'admin' ? '/admin' : roleConfigs[profile.role].home, { replace: true })
+  }, [configured, signedIn, session, profile, navigate])
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    if (!looksLikeEmail(email)) {
+      setError('Enter the administrator email address.')
+      return
+    }
+    if (!password) {
+      setError('Enter the administrator password.')
+      return
+    }
+    setBusy(true)
+    const result = await signIn(email, password)
+    setBusy(false)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    toast('Signed in', { description: 'Opening the Admin Manager console…', tone: 'success' })
+    setSignedIn(true)
+  }
+
+  if (!configured) {
+    return (
+      <AuthShell>
+        <DemoPanel role="admin" />
+      </AuthShell>
+    )
+  }
+
+  return (
+    <div className="relative min-h-dvh overflow-hidden bg-[#0f172a] text-white">
+      <div className="pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-[#475569]/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-[#1e293b] blur-3xl" />
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-6 sm:px-8">
+        <header className="flex items-center justify-between gap-3">
+          <Link to="/" className="flex items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white" aria-hidden>
+              <ShieldCheck size={18} />
+            </span>
+            <span>
+              <span className="block text-base font-extrabold tracking-tight">NeuroBloom</span>
+              <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">OPS ADMIN</span>
+            </span>
+          </Link>
+          <Link
+            to="/login"
+            className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
+          >
+            Learner sign-in
+          </Link>
+        </header>
+
+        <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#475569]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#334155]">
+              <ShieldCheck size={12} /> Restricted access
+            </span>
+            <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-foreground">Ops Admin sign-in</h1>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Admin Manager console for approvals, moderation, payouts and platform health.
+            </p>
+            <p className="mt-3 rounded-xl border border-[#475569]/20 bg-[#475569]/5 px-3 py-2 text-[11px] font-medium text-[#334155]">
+              Review account: the demo administrator email and password are already filled in.
+            </p>
+
+            <form onSubmit={submit} className="mt-5 space-y-3.5" noValidate>
+              <label className="block text-left">
+                <span className="mb-1.5 block text-xs font-semibold text-foreground">Administrator email</span>
+                <input
+                  type="email"
+                  autoComplete="username"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className={opsFieldClass}
+                  required
+                />
+              </label>
+              <div className="text-left">
+                <label htmlFor="admin-password" className="mb-1.5 block text-xs font-semibold text-foreground">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="admin-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    className={cn(opsFieldClass, 'pr-11')}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((shown) => !shown)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#475569]"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {error ? <ErrorNote>{error}</ErrorNote> : null}
+
+              <button
+                type="submit"
+                disabled={busy || loading}
+                className="flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-[#334155] text-sm font-bold text-white transition hover:bg-[#1e293b] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? 'Signing you in…' : 'Sign in to Admin Manager'} {busy ? null : <ArrowRight size={15} />}
+              </button>
+              <p className="-mt-1 text-right">
+                <Link
+                  to="/forgot-password"
+                  className="inline-flex min-h-11 items-center px-1 text-[11px] font-semibold text-red-600 hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </p>
+            </form>
+
+            <p className="mt-4 text-center text-[11px] text-muted-foreground">
+              Not an administrator?{' '}
+              <Link to="/login" className="px-1 py-2 font-bold text-primary hover:underline">
+                Learner sign-in
+              </Link>
+            </p>
+            <p className="mt-2 text-center">
+              <Link
+                to="/"
+                className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft size={12} /> Back to home
+              </Link>
+            </p>
+          </div>
+        </main>
+
+        <p className="text-center text-[10px] text-white/40">
+          © {new Date().getFullYear()} NeuroBloom LearningSphere · Admin Manager access
+        </p>
+      </div>
+    </div>
   )
 }
 
