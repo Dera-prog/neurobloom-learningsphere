@@ -63,6 +63,44 @@ const opsFieldClass =
 const DEMO_ADMIN_EMAIL = 'admin.demo@example.com'
 const DEMO_ADMIN_PASSWORD = 'NeuroBloomDemo2026!'
 
+const LAST_LEARNER_KEY = 'neurobloom.last-learner'
+
+interface RememberedLearner {
+  name: string
+  role: Audience
+  email: string
+}
+
+function readRememberedLearner(): RememberedLearner | null {
+  try {
+    const raw = localStorage.getItem(LAST_LEARNER_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw) as Partial<RememberedLearner>
+    if (!value.role || !ACCOUNT_ROLES.includes(value.role)) return null
+    if (typeof value.email !== 'string' || typeof value.name !== 'string') return null
+    if (!value.email.trim()) return null
+    return { name: value.name.trim() || value.email, role: value.role, email: value.email }
+  } catch {
+    return null
+  }
+}
+
+function saveRememberedLearner(learner: RememberedLearner) {
+  try {
+    localStorage.setItem(LAST_LEARNER_KEY, JSON.stringify(learner))
+  } catch {
+    // Private browsing can refuse storage; the name line just stays hidden.
+  }
+}
+
+function clearRememberedLearner() {
+  try {
+    localStorage.removeItem(LAST_LEARNER_KEY)
+  } catch {
+    // Nothing to clean up when storage is unavailable.
+  }
+}
+
 function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-[1.05fr_1fr]">
@@ -226,7 +264,7 @@ function ErrorNote({ children }: { children: ReactNode }) {
 }
 
 export function LoginPage() {
-  const { configured, loading, session, profile, signIn } = useAuth()
+  const { configured, loading, session, profile, signIn, signOut } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const toast = useToast()
@@ -243,6 +281,25 @@ export function LoginPage() {
   // Only carry a visitor forward when this page signed them in. A leftover
   // session must not skip the sign-in screen and drop them into an old dashboard.
   const [signedIn, setSignedIn] = useState(false)
+  const [remembered, setRemembered] = useState<RememberedLearner | null>(readRememberedLearner)
+
+  // Remember the learner so a returning visitor is greeted by name even after
+  // signing out. Administrators never land in this memory.
+  useEffect(() => {
+    if (!profile || profile.role === 'admin') return
+    const learner = {
+      name: profile.full_name?.trim() || profile.email,
+      role: profile.role,
+      email: profile.email,
+    }
+    saveRememberedLearner(learner)
+    setRemembered(learner)
+  }, [profile])
+
+  useEffect(() => {
+    if (!remembered) return
+    setEmail((value) => value || remembered.email)
+  }, [remembered])
 
   // Browsers can restore the saved demo administrator login here. That account
   // belongs on /ops-admin, so drop it from the public form if it turns up.
@@ -283,7 +340,19 @@ export function LoginPage() {
     setSignedIn(true)
   }
 
+  async function forgetMe() {
+    clearRememberedLearner()
+    setRemembered(null)
+    setEmail('')
+    setPassword('')
+    if (session) await signOut()
+  }
+
   const waiting = busy
+  const knownLearner: RememberedLearner | null =
+    profile && profile.role !== 'admin'
+      ? { name: profile.full_name?.trim() || profile.email, role: profile.role, email: profile.email }
+      : remembered
 
   if (!configured) {
     return (
@@ -297,10 +366,22 @@ export function LoginPage() {
     <AuthShell>
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
-        {profile && profile.role !== 'admin' ? (
-          <p className="mt-1 text-sm font-bold text-foreground">
-            {profile.full_name?.trim() || profile.email} for {roleConfigs[profile.role].marketing.title}
-          </p>
+        {knownLearner ? (
+          <div className="mt-1">
+            <p className="text-sm font-bold text-foreground">
+              {knownLearner.name} for {roleConfigs[knownLearner.role].marketing.title}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Not you?{' '}
+              <button
+                type="button"
+                onClick={forgetMe}
+                className="inline-flex min-h-9 items-center px-1 font-semibold text-primary hover:underline"
+              >
+                Use another account
+              </button>
+            </p>
+          </div>
         ) : (
           <p className="mt-1 text-xs text-muted-foreground">
             {roleHint
