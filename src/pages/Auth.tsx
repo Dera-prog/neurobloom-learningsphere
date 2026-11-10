@@ -367,20 +367,18 @@ export function LoginPage() {
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
         {knownLearner ? (
-          <div className="mt-1">
+          <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3">
             <p className="text-sm font-bold text-foreground">
               {knownLearner.name} for {roleConfigs[knownLearner.role].marketing.title}
             </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Not you?{' '}
-              <button
-                type="button"
-                onClick={forgetMe}
-                className="inline-flex min-h-9 items-center px-1 font-semibold text-primary hover:underline"
-              >
-                Use another account
-              </button>
-            </p>
+            <button
+              type="button"
+              onClick={forgetMe}
+              aria-label="Use another account"
+              className="inline-flex min-h-9 items-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:underline"
+            >
+              Not you?
+            </button>
           </div>
         ) : (
           <p className="mt-1 text-xs text-muted-foreground">
@@ -439,10 +437,7 @@ export function LoginPage() {
           ) : null}
           {error ? <ErrorNote>{error}</ErrorNote> : null}
 
-          <Button type="submit" size="lg" className="w-full" disabled={waiting || loading}>
-            {waiting ? 'Signing you in…' : 'Sign in'} {waiting ? null : <ArrowRight size={15} />}
-          </Button>
-          <p className="-mt-1 text-right">
+          <p className="text-right">
             <Link
               to="/forgot-password"
               className="inline-flex min-h-11 items-center px-1 text-[11px] font-semibold text-red-600 hover:underline"
@@ -450,6 +445,9 @@ export function LoginPage() {
               Forgot password?
             </Link>
           </p>
+          <Button type="submit" size="lg" className="w-full" disabled={waiting || loading}>
+            {waiting ? 'Signing you in…' : 'Sign in'} {waiting ? null : <ArrowRight size={15} />}
+          </Button>
         </form>
 
         <p className="mt-4 text-center text-[11px] text-muted-foreground">
