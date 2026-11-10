@@ -1,0 +1,8 @@
+.edge-*
+.edge-cdp
+.shots
+node_modules
+dist
+*.local
+.snap-*
+.*.html
