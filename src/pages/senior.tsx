@@ -76,7 +76,7 @@ export function SeniorHome() {
   const [booking, setBooking] = useState(false)
   const [subject, setSubject] = useState<SubjectCurriculum | null>(null)
 
-  if (profile?.role === 'senior' && !state.onboarding.complete) {
+  if (profile?.role === 'senior' && state.newAccount) {
     return <NewUserDashboard role="senior" />
   }
 

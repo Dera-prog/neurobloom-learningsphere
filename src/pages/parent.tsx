@@ -110,7 +110,7 @@ export function ParentHome() {
   const { profile: account } = useAuth()
   const [child, setChild] = useState<ChildId>('tunde')
 
-  if (account?.role === 'parent' && !state.onboarding.complete) {
+  if (account?.role === 'parent' && state.newAccount) {
     return <NewUserDashboard role="parent" />
   }
 

@@ -86,7 +86,7 @@ export function SpecialHome() {
   const [live, setLive] = useState<(typeof specialClasses)[number] | null>(null)
   const [focusOpen, setFocusOpen] = useState(false)
 
-  if (profile?.role === 'special' && !state.onboarding.complete) {
+  if (profile?.role === 'special' && state.newAccount) {
     return <NewUserDashboard role="special" />
   }
 

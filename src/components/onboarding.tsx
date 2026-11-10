@@ -294,6 +294,10 @@ export function NewUserDashboard({ role }: { role: AccountRole }) {
   const done = setup.steps.filter((step) => state.onboarding.steps.includes(step.id)).length
   const progress = Math.round((done / total) * 100)
   const nextStep = setup.steps.find((step) => !state.onboarding.steps.includes(step.id)) ?? setup.steps[0]
+  // Once setup is finished this stays the new account's home: there is no
+  // history to show yet, so the dashboard stays empty instead of borrowing
+  // the sample content an established account sees.
+  const setupDone = state.onboarding.complete
 
   function completeStep(id: string) {
     if (!state.onboarding.steps.includes(id)) dispatch({ type: 'MARK_ONBOARDING_STEP', step: id })
@@ -308,7 +312,7 @@ export function NewUserDashboard({ role }: { role: AccountRole }) {
     <RoleLayout role={role}>
       <PageHeader
         title={`Welcome, ${first}`}
-        subtitle={`${longDate()} · Let’s set up your ${config.portal.toLowerCase()}`}
+        subtitle={`${longDate()} · ${setupDone ? 'Your dashboard is ready' : `Let’s set up your ${config.portal.toLowerCase()}`}`}
         badge={<Badge tone="role">New account</Badge>}
         actions={<HeaderActions role={role} />}
       />
@@ -324,48 +328,76 @@ export function NewUserDashboard({ role }: { role: AccountRole }) {
               <h2 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-[28px]">
                 Welcome to NeuroBloom, {first}.
               </h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/75">{setup.promise}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-white/75">
+                {setupDone
+                  ? 'Your dashboard starts empty because you have not done anything yet. Anything you do will show up here.'
+                  : setup.promise}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
                   to={nextStep.to}
                   onClick={() => completeStep(nextStep.id)}
                   className={buttonStyles('primary', 'md', '!bg-white !text-role-ink hover:!bg-white/90')}
                 >
-                  {done === 0 ? 'Start the first step' : nextStep.cta} <ArrowRight size={15} />
+                  {setupDone ? 'Start learning' : done === 0 ? 'Start the first step' : nextStep.cta} <ArrowRight size={15} />
                 </Link>
-                <button
-                  type="button"
-                  onClick={finish}
-                  className={buttonStyles('ghost', 'md', 'text-white hover:bg-white/15 hover:text-white')}
-                >
-                  Skip to my dashboard
-                </button>
+                {setupDone ? null : (
+                  <button
+                    type="button"
+                    onClick={finish}
+                    className={buttonStyles('ghost', 'md', 'text-white hover:bg-white/15 hover:text-white')}
+                  >
+                    Skip to my dashboard
+                  </button>
+                )}
               </div>
             </div>
             <div className="w-full max-w-xs rounded-2xl bg-white/10 p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between text-[11px] font-bold">
-                <span>Setup progress</span>
-                <span>
-                  {done} / {total}
-                </span>
+                <span>{setupDone ? 'Activity so far' : 'Setup progress'}</span>
+                <span>{setupDone ? 'None yet' : `${done} / ${total}`}</span>
               </div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
                 <div
                   className="h-full rounded-full bg-white transition-[width] duration-500"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${setupDone ? 0 : progress}%` }}
                 />
               </div>
               <p className="mt-2 text-[11px] leading-relaxed text-white/70">
-                {done === total
-                  ? 'All done — your dashboard is ready.'
-                  : `${total - done} ${total - done === 1 ? 'step' : 'steps'} left. Take them at your pace.`}
+                {setupDone
+                  ? 'No lessons, practice, messages or progress have been recorded on this account yet.'
+                  : done === total
+                    ? 'All done — your dashboard is ready.'
+                    : `${total - done} ${total - done === 1 ? 'step' : 'steps'} left. Take them at your pace.`}
               </p>
             </div>
           </div>
         </Card>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <SectionCard
+          {setupDone ? (
+            <SectionCard
+              title="Recent activity"
+              subtitle="Your own learning history will appear here"
+              icon={ListChecks}
+              action={<Badge tone="role">No activity yet</Badge>}
+            >
+              <div className="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-role-soft text-role-ink" aria-hidden>
+                  <Sparkles size={20} />
+                </span>
+                <p className="text-sm font-bold text-foreground">Nothing here yet</p>
+                <p className="max-w-sm text-[11px] leading-relaxed text-muted-foreground">
+                  This dashboard is empty because you have not done anything on this account. Lessons, practice,
+                  messages and progress will appear here as soon as you start.
+                </p>
+                <Link to={nextStep.to} className={buttonStyles('role', 'sm', 'mt-1')}>
+                  {nextStep.cta} <ArrowRight size={12} />
+                </Link>
+              </div>
+            </SectionCard>
+          ) : (
+            <SectionCard
             title="Your setup checklist"
             subtitle="Tick each step as you go — it saves automatically"
             icon={ListChecks}
@@ -423,6 +455,7 @@ export function NewUserDashboard({ role }: { role: AccountRole }) {
               </button>
             </div>
           </SectionCard>
+          )}
 
           <div className="space-y-5">
             <SectionCard title="Your first week" subtitle="Small habits that make a difference" icon={CalendarDays}>

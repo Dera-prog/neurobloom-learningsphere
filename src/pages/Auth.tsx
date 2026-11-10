@@ -85,6 +85,32 @@ function AuthShell({ children }: { children: ReactNode }) {
   )
 }
 
+function SignedInNote({
+  name,
+  continueTo,
+  onUseAnother,
+}: {
+  name: string
+  continueTo: string
+  onUseAnother: () => void
+}) {
+  return (
+    <div className="mb-4 rounded-xl border border-border bg-muted/60 p-3">
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        This browser is signed in as <span className="font-bold text-foreground">{name}</span>.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Link to={continueTo} className={buttonStyles('primary', 'sm')}>
+          Continue to dashboard
+        </Link>
+        <button type="button" onClick={onUseAnother} className={buttonStyles('ghost', 'sm')}>
+          Use a different account
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function DemoPanel({ role }: { role?: Audience | null }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -146,7 +172,7 @@ function ErrorNote({ children }: { children: ReactNode }) {
 }
 
 export function LoginPage() {
-  const { configured, loading, session, profile, profileLoading, signIn } = useAuth()
+  const { configured, loading, session, profile, profileLoading, signIn, signOut } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const toast = useToast()
@@ -159,12 +185,14 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Only carry a visitor forward when this page signed them in. A leftover
+  // session must not skip the sign-in screen and drop them into an old dashboard.
+  const [signedIn, setSignedIn] = useState(false)
 
   useEffect(() => {
-    if (!configured || loading || !session) return
-    if (!profile) return
+    if (!configured || loading || !signedIn || !session || !profile) return
     navigate(next ?? roleConfigs[profile.role].home, { replace: true })
-  }, [configured, loading, session, profile, next, navigate])
+  }, [configured, loading, signedIn, session, profile, next, navigate])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -185,6 +213,7 @@ export function LoginPage() {
       return
     }
     toast('Signed in', { description: 'Loading your dashboard…', tone: 'success' })
+    setSignedIn(true)
   }
 
   const waiting = busy || (Boolean(session) && profileLoading)
@@ -200,6 +229,13 @@ export function LoginPage() {
   return (
     <AuthShell>
       <div>
+        {session && !signedIn ? (
+          <SignedInNote
+            name={profile?.full_name?.trim() || profile?.email || session.user.email || 'this account'}
+            continueTo={next ?? (profile ? roleConfigs[profile.role].home : '/')}
+            onUseAnother={() => void signOut()}
+          />
+        ) : null}
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
         <p className="mt-1 text-xs text-muted-foreground">
           {roleHint
@@ -281,7 +317,7 @@ export function LoginPage() {
 }
 
 export function SignupPage() {
-  const { configured, session, profile, signUp } = useAuth()
+  const { configured, session, profile, signUp, signOut } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const requestedNext = params.get('next')
@@ -294,11 +330,6 @@ export function SignupPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState('')
-
-  useEffect(() => {
-    if (!configured || !session || !profile || sentTo) return
-    navigate(next ?? roleConfigs[profile.role].home, { replace: true })
-  }, [configured, session, profile, sentTo, next, navigate])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -367,6 +398,13 @@ export function SignupPage() {
   return (
     <AuthShell>
       <div>
+        {session ? (
+          <SignedInNote
+            name={profile?.full_name?.trim() || profile?.email || session.user.email || 'this account'}
+            continueTo={next ?? (profile ? roleConfigs[profile.role].home : '/')}
+            onUseAnother={() => void signOut()}
+          />
+        ) : null}
         <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Create your account</h1>
         <p className="mt-1 text-xs text-muted-foreground">One account for learning, tutoring or keeping track of your child.</p>
 

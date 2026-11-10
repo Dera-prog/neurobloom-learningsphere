@@ -153,7 +153,7 @@ export default function Landing() {
                       e.currentTarget.style.background = config.soft
                     }}
                   >
-                    Enter dashboard <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                    Sign in <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </Link>
               )

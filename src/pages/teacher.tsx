@@ -79,7 +79,7 @@ export function TeacherHome() {
   const [createAssignment, setCreateAssignment] = useState(false)
   const [createClass, setCreateClass] = useState(false)
 
-  if (profile?.role === 'teacher' && !state.onboarding.complete) {
+  if (profile?.role === 'teacher' && state.newAccount) {
     return <NewUserDashboard role="teacher" />
   }
 

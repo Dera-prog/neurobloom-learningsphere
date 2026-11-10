@@ -74,6 +74,9 @@ export interface OnboardingState {
 }
 
 export interface AppState {
+  // A signup keeps this on until the account builds up its own history; it is
+  // persisted so signing out and back in never reveals the demo dashboard.
+  newAccount: boolean
   points: number
   assignments: Assignment[]
   threads: Thread[]
@@ -140,6 +143,7 @@ function oneMonthFromNow() {
 
 function makeInitialState(): AppState {
   return {
+    newAccount: false,
     points: 1180,
     assignments: initialAssignments.map((a) => ({ ...a })),
     threads: seedThreads.map((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m })) })),
@@ -400,6 +404,7 @@ function normalizeState(parsed: Partial<AppState>): AppState {
   return {
     ...initial,
     ...parsed,
+    newAccount: parsed.newAccount === true,
     preferences: {
       ...initial.preferences,
       ...prefs,
@@ -480,7 +485,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const firstRun = !hasState && hasPendingOnboarding(id)
       const next = hasState
         ? normalizeState(stored as Partial<AppState>)
-        : { ...makeInitialState(), onboarding: { complete: !firstRun, steps: [] } }
+        : { ...makeInitialState(), newAccount: firstRun, onboarding: { complete: !firstRun, steps: [] } }
 
       // Do not write here: an eager snapshot of the first-run state can land
       // after the user finishes setup and overwrite it. Leaving syncedRef empty

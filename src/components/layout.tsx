@@ -48,9 +48,10 @@ function SidebarFooter({ config }: { config: RoleConfig }) {
     return (
       <div className="rounded-xl bg-white/10 p-3 text-center">
         <div className="mb-1 flex items-center justify-center gap-1.5 text-sm font-bold text-white">
-          <Flame size={15} className="text-orange-300" /> {state.points > 0 ? '7 Day Streak!' : 'Start a streak'}
+          <Flame size={15} className="text-orange-300" />{' '}
+          {state.newAccount || state.points <= 0 ? 'Start a streak' : '7 Day Streak!'}
         </div>
-        <p className="text-[11px] text-white/60">Keep it up! 🎉</p>
+        <p className="text-[11px] text-white/60">{state.newAccount ? 'Your activity starts here.' : 'Keep it up! 🎉'}</p>
       </div>
     )
   }
@@ -79,10 +80,16 @@ function SidebarFooter({ config }: { config: RoleConfig }) {
           <Wallet size={14} />
           <span className="text-[11px] font-bold">This month</span>
         </div>
-        <p className="mt-1 text-lg font-extrabold text-foreground">{naira(thisMonthEarnings.value * 1000)}</p>
-        <p className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
-          <TrendingUp size={11} /> +{monthGrowth}% vs last month
+        <p className="mt-1 text-lg font-extrabold text-foreground">
+          {state.newAccount ? naira(0) : naira(thisMonthEarnings.value * 1000)}
         </p>
+        {state.newAccount ? (
+          <p className="text-[10px] font-semibold text-muted-foreground">No lessons taught yet</p>
+        ) : (
+          <p className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+            <TrendingUp size={11} /> +{monthGrowth}% vs last month
+          </p>
+        )}
       </div>
     )
   }
@@ -101,13 +108,18 @@ function SidebarFooter({ config }: { config: RoleConfig }) {
   }
 
   return (
-    <Link to="/parent/support" className="block rounded-2xl border border-border bg-role-soft p-3.5 transition hover:shadow-sm">
+    <Link
+      to={state.newAccount ? '/parent/subscriptions' : '/parent/support'}
+      className="block rounded-2xl border border-border bg-role-soft p-3.5 transition hover:shadow-sm"
+    >
       <div className="flex items-center gap-1.5 text-role-ink">
         <HeartHandshake size={14} />
-        <span className="text-[11px] font-bold">Chidi’s ASD plan is active</span>
+        <span className="text-[11px] font-bold">{state.newAccount ? 'No plan chosen yet' : 'Chidi’s ASD plan is active'}</span>
       </div>
       <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
-        Special Needs Premium · view goals and specialist notes.
+        {state.newAccount
+          ? 'Choose a plan for your child to unlock lessons and progress tracking.'
+          : 'Special Needs Premium · view goals and specialist notes.'}
       </p>
     </Link>
   )
@@ -350,7 +362,9 @@ function SidebarContent({ config, onNavigate, onClose }: { config: RoleConfig; o
   const ownProfile = configured && Boolean(profile?.full_name) && profile?.role === config.role
   const name = ownProfile && profile?.full_name ? profile.full_name : config.user.name
   const meta = ownProfile && profile?.email ? profile.email : baseMeta
-  const unreadMessages = threadsFor(config.role).reduce((sum, thread) => sum + (thread.unread ?? 0), 0)
+  const unreadMessages = state.newAccount
+    ? 0
+    : threadsFor(config.role).reduce((sum, thread) => sum + (thread.unread ?? 0), 0)
 
   return (
     <>
@@ -481,7 +495,7 @@ export function NotificationBell({ role }: { role: Audience }) {
   const ref = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const items = notificationsByRole[role]
-  const unread = state.notificationsRead ? 0 : items.length
+  const unread = state.newAccount || state.notificationsRead ? 0 : items.length
 
   useEffect(() => {
     setOpen(false)

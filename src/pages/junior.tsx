@@ -59,7 +59,7 @@ export function JuniorHome() {
   const [assignmentId, setAssignmentId] = useState<string | null>(null)
   const [subject, setSubject] = useState<SubjectCurriculum | null>(null)
 
-  if (profile?.role === 'junior' && !state.onboarding.complete) {
+  if (profile?.role === 'junior' && state.newAccount) {
     return <NewUserDashboard role="junior" />
   }
 
