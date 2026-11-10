@@ -158,12 +158,6 @@ export default function Landing() {
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[11px] text-muted-foreground">
             <span>New here?</span>
             <Link
-              to="/signup?role=parent"
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 font-bold text-foreground transition hover:border-primary/40 hover:text-primary"
-            >
-              Create a parent account <ArrowRight size={12} />
-            </Link>
-            <Link
               to="/signup?role=teacher"
               className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 font-bold text-foreground transition hover:border-primary/40 hover:text-primary"
             >
