@@ -1259,7 +1259,7 @@ export function SignupPage() {
                   ? 'Necessary — Parent Number'
                   : isTeacher
                     ? 'Necessary — for class scheduling'
-                    : 'Required — phone or email for OTP'}
+                    : 'Required — Parent/Guardian phone number'}
               </span>
             </span>
             <input
