@@ -10,6 +10,7 @@ import {
   KeyRound,
   Mail,
   Plus,
+  Send,
   ShieldCheck,
   Sparkles,
   UploadCloud,
@@ -906,6 +907,14 @@ export function SignupPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpToken, setOtpToken] = useState('')
+  const [otpSentTo, setOtpSentTo] = useState('')
+  const [otpNotice, setOtpNotice] = useState('')
+  const [otpError, setOtpError] = useState('')
+  const [otpBusy, setOtpBusy] = useState(false)
+  const [otpVerified, setOtpVerified] = useState(false)
+  const [resendIn, setResendIn] = useState(0)
 
   // Signup hands the children over through localStorage, but the store can
   // hydrate before the report finishes uploading. Track readiness so the upload
@@ -917,8 +926,90 @@ export function SignupPage() {
 
   const isParent = role === 'parent'
   const isTeacher = role === 'teacher'
+  const isLearner = role === 'junior' || role === 'senior' || role === 'special'
   const wantsReport = isParent && children.some((child) => child.specialNeeds)
   const phoneNeeded = isParent || isTeacher
+  const guardianContact = phone.trim()
+  const guardianValid = looksLikeEmail(guardianContact) || guardianContact.replace(/\D/g, '').length >= 7
+
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const timer = window.setTimeout(() => setResendIn((seconds) => seconds - 1), 1000)
+    return () => window.clearTimeout(timer)
+  }, [resendIn])
+
+  async function requestOtp() {
+    setOtpError('')
+    setOtpNotice('')
+    if (!guardianValid) {
+      setOtpError('Enter the parent or guardian’s phone number or email above first.')
+      return
+    }
+    setOtpBusy(true)
+    try {
+      const response = await fetch('/api/guardian-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', contact: guardianContact, learnerName: fullName.trim() }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as {
+        token?: string
+        code?: string
+        review?: boolean
+        message?: string
+      }
+      if (!response.ok || !payload.token) {
+        setOtpError(payload.message || 'Could not send the code. Try again.')
+        return
+      }
+      setOtpToken(payload.token)
+      setOtpSentTo(guardianContact)
+      setOtpVerified(false)
+      setOtpCode('')
+      setResendIn(30)
+      setOtpNotice(
+        payload.review && payload.code
+          ? `Demo mode — no email or SMS provider is connected yet, so no message was sent. Use code ${payload.code}.`
+          : `Code sent to ${guardianContact}. Ask your parent or guardian to share it, then enter it below.`,
+      )
+    } catch {
+      setOtpError('Could not reach the OTP service. Check your connection and try again.')
+    } finally {
+      setOtpBusy(false)
+    }
+  }
+
+  async function confirmOtp() {
+    setOtpError('')
+    if (!otpToken) {
+      setOtpError('Send a code to your parent or guardian first.')
+      return
+    }
+    if (!/^\d{6}$/.test(otpCode)) {
+      setOtpError('Enter the 6-digit code.')
+      return
+    }
+    setOtpBusy(true)
+    try {
+      const response = await fetch('/api/guardian-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', code: otpCode, token: otpToken }),
+      })
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; verified?: boolean }
+      if (!response.ok || !payload.verified) {
+        setOtpError(payload.message || 'That code is not right. Check it and try again.')
+        return
+      }
+      setOtpVerified(true)
+      setOtpNotice('')
+      setOtpCode('')
+    } catch {
+      setOtpError('Could not reach the OTP service. Try again.')
+    } finally {
+      setOtpBusy(false)
+    }
+  }
 
   function updateChild(index: number, patch: Partial<ChildDraft>) {
     setChildren((current) => current.map((child, i) => (i === index ? { ...child, ...patch } : child)))
@@ -953,6 +1044,16 @@ export function SignupPage() {
     if (!looksLikeEmail(email)) {
       setError('Enter a valid email address for confirmations.')
       return
+    }
+    if (isLearner) {
+      if (!guardianValid) {
+        setError('Add the phone number or email of your parent or guardian.')
+        return
+      }
+      if (!otpVerified) {
+        setError('Verify the OTP sent to your parent or guardian before creating your account.')
+        return
+      }
     }
     if (phoneNeeded && phone.replace(/\D/g, '').length < 7) {
       setError(isParent ? 'Add the parent number we can reach you on.' : 'Add a phone number students can reach you on.')
@@ -1151,22 +1252,33 @@ export function SignupPage() {
 
           <label className="block text-left">
             <span className="mb-1.5 flex items-baseline justify-between gap-2 text-xs font-semibold text-foreground">
-              {isParent ? 'Parent number' : 'Phone number'}
+              {isParent ? 'Parent number' : isTeacher ? 'Phone number' : 'Parent/guardian contact'}
               <span className="text-[10px] font-medium text-muted-foreground">
                 {isParent
                   ? 'Necessary — Parent Number'
                   : isTeacher
                     ? 'Necessary — for class scheduling'
-                    : 'Optional — guardian’s contact'}
+                    : 'Required — phone or email for OTP'}
               </span>
             </span>
             <input
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
+              type={isLearner ? 'text' : 'tel'}
+              inputMode={isLearner ? 'text' : 'tel'}
+              autoComplete={isLearner ? 'off' : 'tel'}
               value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              placeholder="080 1234 5678"
+              onChange={(event) => {
+                setPhone(event.target.value)
+                if (isLearner && (otpToken || otpVerified)) {
+                  setOtpToken('')
+                  setOtpVerified(false)
+                  setOtpSentTo('')
+                  setOtpNotice('')
+                  setOtpError('')
+                  setOtpCode('')
+                  setResendIn(0)
+                }
+              }}
+              placeholder={isLearner ? '080 1234 5678 or parent@example.com' : '080 1234 5678'}
               className={fieldClass}
             />
           </label>
@@ -1182,6 +1294,91 @@ export function SignupPage() {
               className={fieldClass}
             />
           </label>
+
+          {isLearner ? (
+            <section
+              className="rounded-xl border border-border bg-card p-3"
+              aria-labelledby="guardian-otp-heading"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h2
+                    id="guardian-otp-heading"
+                    className="flex items-center gap-1.5 text-xs font-semibold text-foreground"
+                  >
+                    <ShieldCheck size={13} className="text-primary" /> Parent/Guardian OTP
+                  </h2>
+                  <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+                    A parent or guardian confirms this account. We’ll send a 6-digit code to the contact above for
+                    them to share with you.
+                  </p>
+                </div>
+                {otpVerified ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-emerald-700">
+                    <CheckCircle2 size={11} /> Verified
+                  </span>
+                ) : null}
+              </div>
+
+              {otpVerified ? (
+                <p
+                  role="status"
+                  className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[10px] font-medium text-emerald-800"
+                >
+                  {otpSentTo} is verified as your parent/guardian contact.
+                </p>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={requestOtp}
+                    disabled={otpBusy || resendIn > 0}
+                    className="mt-2 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-primary/30 bg-primary/[0.06] text-[11px] font-bold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Send size={13} />
+                    {otpBusy
+                      ? 'Sending…'
+                      : otpSentTo
+                        ? resendIn > 0
+                          ? `Resend OTP in ${resendIn}s`
+                          : 'Resend OTP'
+                        : 'Send OTP to parent/guardian'}
+                  </button>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      aria-label="Parent or guardian OTP"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="6-digit code"
+                      className={cn(fieldClass, 'flex-1')}
+                    />
+                    <button
+                      type="button"
+                      onClick={confirmOtp}
+                      disabled={otpBusy || otpCode.length !== 6 || !otpToken}
+                      className="h-10 shrink-0 rounded-xl bg-primary px-4 text-[11px] font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Verify
+                    </button>
+                  </div>
+                  {otpNotice ? (
+                    <p className="mt-2 rounded-lg bg-muted/60 px-2.5 py-2 text-[10px] font-medium leading-relaxed text-foreground">
+                      {otpNotice}
+                    </p>
+                  ) : null}
+                  {otpError ? (
+                    <p role="alert" className="mt-1.5 text-[10px] font-medium text-destructive">
+                      {otpError}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </section>
+          ) : null}
 
           {isParent ? (
             <section className="space-y-2.5" aria-labelledby="children-heading">
