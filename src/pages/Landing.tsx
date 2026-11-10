@@ -11,7 +11,6 @@ import {
 } from 'lucide-react'
 import { landingRoles, roleConfigs } from '../config/roles'
 import { parentAccessAddon, plans } from '../data/content'
-import { buttonStyles } from '../components/ui'
 import { cn, naira } from '../lib/utils'
 import { STORAGE_KEY } from '../store/store'
 import { useAuth } from '../lib/auth'
@@ -49,9 +48,6 @@ export default function Landing() {
                 Sign in
               </Link>
             ) : null}
-            <Link to="/signup" className={buttonStyles('primary', 'md', 'px-5')}>
-              Register
-            </Link>
           </div>
         </nav>
       </header>
