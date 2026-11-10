@@ -85,8 +85,11 @@ export function JuniorHome() {
     <RoleLayout role="junior">
       <PageHeader
         title={
-          <span className="flex items-center gap-2">
-            Hi Tunde! <span aria-hidden>👋</span>
+          <span className="flex flex-col">
+            <span>Welcome back</span>
+            <span className="mt-0.5 text-sm font-bold text-[color:var(--shell-fg)]">
+              Aderinola Segun for Junior Student
+            </span>
           </span>
         }
         subtitle={`${longDate()} · ${assignments.length} tasks this week`}
@@ -111,7 +114,7 @@ export function JuniorHome() {
                 <Flame size={13} className="text-orange-300" /> 7 day learning streak
               </span>
               <h2 className="mt-3 text-2xl font-extrabold leading-tight tracking-tight sm:text-[28px]">
-                You’re blooming, Tunde!
+                You’re blooming, Aderinola!
               </h2>
               <p className="mt-1.5 text-sm text-white/75">
                 Finish today’s algebra quiz to reach <span className="font-bold text-orange-200">1,200 points</span> and
