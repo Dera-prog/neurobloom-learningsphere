@@ -686,7 +686,7 @@ export function OpsAdminSignupPage() {
               The operations team reviews admin requests before any console access is issued. We’ll reply to{' '}
               <span className="font-bold text-foreground">{email}</span> once the account is approved.
             </p>
-            <p className="mt-3 rounded-xl border border-[#1e3a8a]/20 bg-[#1e3a8a]/5 px-3 py-2 text-[11px] font-medium text-[#1e3a8a]">
+            <p className="mt-3 rounded-xl border border-[#1e40af]/20 bg-[#1e40af]/5 px-3 py-2 text-[11px] font-medium text-[#1e40af]">
               Reference {reference} · Super Admin access
             </p>
             <div className="mt-5 flex flex-col gap-2">
@@ -710,7 +710,7 @@ export function OpsAdminSignupPage() {
     <OpsAdminShell>
       <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
         <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1e3a8a]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#1e3a8a]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1e40af]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#1e40af]">
             <ShieldCheck size={12} /> Super Admin
           </span>
           <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-foreground">Create an admin account</h1>
@@ -768,7 +768,7 @@ export function OpsAdminSignupPage() {
                     className={cn(
                       'flex items-center justify-between rounded-xl border px-3 py-2 text-[11px] font-semibold transition',
                       level === value
-                        ? 'border-[#1e3a8a]/40 bg-[#1e3a8a]/10 text-[#1e3a8a]'
+                        ? 'border-[#1e40af]/40 bg-[#1e40af]/10 text-[#1e40af]'
                         : 'border-border bg-card text-muted-foreground hover:bg-muted',
                     )}
                   >
@@ -796,7 +796,7 @@ export function OpsAdminSignupPage() {
 
             <button
               type="submit"
-              className="flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-[#171238] text-sm font-bold text-white transition hover:bg-[#251d52]"
+              className="flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-[#1d4ed8] text-sm font-bold text-white transition hover:bg-[#1e40af]"
             >
               Request admin access <ArrowRight size={15} />
             </button>
