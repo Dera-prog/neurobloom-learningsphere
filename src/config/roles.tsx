@@ -279,14 +279,14 @@ export const roleConfigs: Record<Audience, RoleConfig> = {
     ],
     user: {
       name: 'Zainab Yusuf',
-      meta: 'Super Admin · Full access',
+      meta: 'Admin · Full access',
       initials: 'ZY',
       avatarBg: '#475569',
       avatarColor: '#ffffff',
     },
     footer: 'ops',
     marketing: {
-      title: 'Admin / Super Admin',
+      title: 'Admin',
       level: 'Platform operations',
       description: 'Approve teachers, moderate content, track revenue, payouts and platform health.',
       chips: ['Approvals', 'Moderation', 'Revenue'],
