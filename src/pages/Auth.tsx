@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Crown,
   Eye,
   EyeOff,
   FileText,
@@ -511,7 +512,7 @@ export function OpsAdminLandingPage() {
       <main id="main-content" tabIndex={-1} className="flex flex-1 items-center py-10 outline-none">
         <div className="w-full">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
-            <ShieldCheck size={12} /> Admin / Super Admin
+            <ShieldCheck size={12} /> Admin
           </span>
           <h1 className="mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
             The Admin Manager console.
@@ -551,6 +552,102 @@ export function OpsAdminLandingPage() {
         </div>
       </main>
     </OpsAdminShell>
+  )
+}
+
+const SUPER_DUTIES = [
+  {
+    title: 'Platform ownership',
+    copy: 'Full control of every portal, role and account across NeuroBloom LearningSphere.',
+  },
+  {
+    title: 'Roles & access',
+    copy: 'Grant or revoke admin access, manage the operations team and approve sensitive exports.',
+  },
+  {
+    title: 'Security & integrity',
+    copy: 'Audit trails, final decisions on flagged content and disputes between users.',
+  },
+]
+
+function SuperAdminShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative min-h-dvh overflow-hidden bg-[#171238] text-white">
+      <div className="pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-[#4338ca]/40 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 bottom-0 h-96 w-96 rounded-full bg-[#1d4ed8]/25 blur-3xl" />
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-4 py-6 sm:px-8">
+        <header className="flex items-center justify-between gap-3">
+          <Link to="/super-admin" className="flex items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 text-white" aria-hidden>
+              <Crown size={18} />
+            </span>
+            <span>
+              <span className="block text-base font-extrabold tracking-tight">NeuroBloom</span>
+              <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">SUPER ADMIN</span>
+            </span>
+          </Link>
+          <Link
+            to="/ops-admin"
+            className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
+          >
+            Admin Manager
+          </Link>
+        </header>
+        {children}
+        <p className="text-center text-[10px] text-white/40">
+          © {new Date().getFullYear()} NeuroBloom LearningSphere · Super Admin access
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function SuperAdminLandingPage() {
+  return (
+    <SuperAdminShell>
+      <main id="main-content" tabIndex={-1} className="flex flex-1 items-center py-10 outline-none">
+        <div className="w-full">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
+            <Crown size={12} /> Super Admin
+          </span>
+          <h1 className="mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+            The Super Admin console.
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
+            The top-level seat for NeuroBloom LearningSphere: every dashboard, every admin account and every sensitive
+            decision sits here. Access is issued to owners only.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2.5">
+            <Link
+              to="/ops-admin/sign-in"
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-white px-5 text-sm font-bold text-[#171238] transition hover:bg-white/90"
+            >
+              Sign in to Super Admin <ArrowRight size={15} />
+            </Link>
+            <Link
+              to="/ops-admin/sign-up"
+              className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-white/25 px-5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Request Super Admin access
+            </Link>
+          </div>
+
+          <div className="mt-10 grid gap-3 sm:grid-cols-3">
+            {SUPER_DUTIES.map((duty) => (
+              <div key={duty.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-xs font-bold text-white">{duty.title}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/55">{duty.copy}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-8 max-w-xl text-[11px] leading-relaxed text-white/45">
+            Super Admin accounts are issued personally by NeuroBloom ownership and carry full platform access, including
+            control over the operations team itself. If you were invited, sign in with the email on your invitation.
+          </p>
+        </div>
+      </main>
+    </SuperAdminShell>
   )
 }
 

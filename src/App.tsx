@@ -10,6 +10,7 @@ import {
   OpsAdminLoginPage,
   OpsAdminSignupPage,
   ResetPasswordPage,
+  SuperAdminLandingPage,
   SignupPage,
 } from './pages/Auth'
 import { PaymentCallbackPage } from './pages/PaymentCallback'
@@ -86,6 +87,7 @@ const routeTitles: Record<string, string> = {
   '/ops-admin': 'Ops Admin · NeuroBloom',
   '/ops-admin/sign-in': 'Ops Admin sign-in · NeuroBloom',
   '/ops-admin/sign-up': 'Admin account request · NeuroBloom',
+  '/super-admin': 'Super Admin · NeuroBloom',
   '/signup': 'Create account · NeuroBloom',
   '/parent-access/register': 'Parent Access registration · NeuroBloom',
   '/auth/callback': 'Signing you in · NeuroBloom',
@@ -210,6 +212,7 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/ops-admin" element={<OpsAdminLandingPage />} />
+        <Route path="/super-admin" element={<SuperAdminLandingPage />} />
         <Route path="/ops-admin/sign-in" element={<OpsAdminLoginPage />} />
         <Route path="/ops-admin/sign-up" element={<OpsAdminSignupPage />} />
         <Route path="/signup" element={<SignupPage />} />
