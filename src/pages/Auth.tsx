@@ -655,7 +655,7 @@ export function OpsAdminSignupPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [level, setLevel] = useState<'admin' | 'super'>('admin')
+  const [level, setLevel] = useState<'admin' | 'super'>('super')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [reference, setReference] = useState('')
@@ -692,7 +692,7 @@ export function OpsAdminSignupPage() {
               <span className="font-bold text-foreground">{email}</span> once the account is approved.
             </p>
             <p className="mt-3 rounded-xl border border-[#475569]/20 bg-[#475569]/5 px-3 py-2 text-[11px] font-medium text-[#334155]">
-              Reference {reference} · {level === 'super' ? 'Super Admin' : 'Admin'} access
+              Reference {reference} · Super Admin access
             </p>
             <div className="mt-5 flex flex-col gap-2">
               <Link to="/ops-admin/sign-in" className={buttonStyles('primary', 'lg', 'w-full')}>
@@ -716,7 +716,7 @@ export function OpsAdminSignupPage() {
       <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
         <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#475569]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#334155]">
-            <ShieldCheck size={12} /> Admin / Super Admin
+            <ShieldCheck size={12} /> Super Admin
           </span>
           <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-foreground">Create an admin account</h1>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
@@ -761,9 +761,8 @@ export function OpsAdminSignupPage() {
             </label>
             <div className="text-left">
               <span className="mb-1.5 block text-xs font-semibold text-foreground">Access level</span>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-1 gap-1.5">
                 {([
-                  ['admin', 'Admin'],
                   ['super', 'Super Admin'],
                 ] as const).map(([value, label]) => (
                   <button
@@ -811,13 +810,7 @@ export function OpsAdminSignupPage() {
             </p>
           </form>
 
-          <p className="mt-4 text-center text-[11px] text-muted-foreground">
-            Already approved?{' '}
-            <Link to="/ops-admin/sign-in" className="px-1 py-2 font-bold text-primary hover:underline">
-              Sign in to Admin Manager
-            </Link>
-          </p>
-          <p className="mt-2 text-center">
+          <p className="mt-4 text-center">
             <Link
               to="/ops-admin"
               className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
