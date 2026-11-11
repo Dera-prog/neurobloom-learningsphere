@@ -590,7 +590,7 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
             to="/ops-admin"
             className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
           >
-            Admin Manager
+            CEO
           </Link>
         </header>
         {children}
