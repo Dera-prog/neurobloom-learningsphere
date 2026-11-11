@@ -586,12 +586,7 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
               <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">SUPER ADMIN</span>
             </span>
           </Link>
-          <Link
-            to="/ops-admin"
-            className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
-          >
-            CEO
-          </Link>
+          <span className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60">CEO</span>
         </header>
         {children}
         <p className="text-center text-[10px] text-white/40">
