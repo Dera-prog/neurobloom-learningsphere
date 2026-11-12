@@ -92,6 +92,13 @@ const routeTitles: Record<string, string> = {
   '/super-admin': 'Super Admin · NeuroBloom',
   '/super-admin/sign-in': 'Super Admin sign-in · NeuroBloom',
   '/super-admin/console': 'Super Admin console · NeuroBloom',
+  '/super-admin/console/access': 'Access & roles · Super Admin · NeuroBloom',
+  '/super-admin/console/safeguarding': 'Safeguarding · Super Admin · NeuroBloom',
+  '/super-admin/console/compliance': 'Data & compliance · Super Admin · NeuroBloom',
+  '/super-admin/console/platform': 'Platform & live ops · Super Admin · NeuroBloom',
+  '/super-admin/console/admins': 'Admins & activity · Super Admin · NeuroBloom',
+  '/super-admin/console/vendors': 'Vendors & licences · Super Admin · NeuroBloom',
+  '/super-admin/console/reports': 'Reports · Super Admin · NeuroBloom',
   '/signup': 'Create account · NeuroBloom',
   '/parent-access/register': 'Parent Access registration · NeuroBloom',
   '/auth/callback': 'Signing you in · NeuroBloom',
@@ -219,6 +226,7 @@ export default function App() {
         <Route path="/super-admin" element={<SuperAdminLandingPage />} />
         <Route path="/super-admin/sign-in" element={<SuperAdminSignInPage />} />
         <Route path="/super-admin/console" element={guard('admin', <SuperAdminConsole />)} />
+        <Route path="/super-admin/console/:section" element={guard('admin', <SuperAdminConsole />)} />
         <Route path="/ops-admin/sign-in" element={<OpsAdminLoginPage />} />
         <Route path="/ops-admin/sign-up" element={<OpsAdminSignupPage />} />
         <Route path="/signup" element={<SignupPage />} />
