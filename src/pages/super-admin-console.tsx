@@ -491,7 +491,7 @@ export function SuperAdminConsole() {
             <StatCard
               label="Accounts on platform"
               value={derived.accounts.length.toLocaleString()}
-              sub={`${derived.learners} learners · ${derived.teachers} teachers`}
+              sub={`${derived.learners} learner${derived.learners === 1 ? '' : 's'} · ${derived.teachers} teacher${derived.teachers === 1 ? '' : 's'}`}
               icon={Users}
             />
             <StatCard
