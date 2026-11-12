@@ -459,7 +459,15 @@ export function LoginPage() {
   )
 }
 
-function OpsAdminShell({ children }: { children: ReactNode }) {
+function OpsAdminShell({
+  children,
+  subtitle = 'OPS ADMIN',
+  headerRight,
+}: {
+  children: ReactNode
+  subtitle?: string
+  headerRight?: ReactNode
+}) {
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[#0f172a] text-white">
       <div className="pointer-events-none absolute -left-24 top-10 h-80 w-80 rounded-full bg-[#475569]/40 blur-3xl" />
@@ -472,15 +480,17 @@ function OpsAdminShell({ children }: { children: ReactNode }) {
             </span>
             <span>
               <span className="block text-base font-extrabold tracking-tight">NeuroBloom</span>
-              <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">OPS ADMIN</span>
+              <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">{subtitle}</span>
             </span>
           </Link>
-          <Link
-            to="/login"
-            className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
-          >
-            Learner sign-in
-          </Link>
+          {headerRight ?? (
+            <Link
+              to="/login"
+              className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60 transition hover:text-white"
+            >
+              Learner sign-in
+            </Link>
+          )}
         </header>
         {children}
         <p className="text-center text-[10px] text-white/40">
@@ -646,6 +656,10 @@ export function SuperAdminLandingPage() {
   )
 }
 
+const ceoHeaderLabel = (
+  <span className="inline-flex min-h-11 items-center px-2 text-[11px] font-semibold text-white/60">CEO</span>
+)
+
 export function OpsAdminSignupPage() {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -675,7 +689,7 @@ export function OpsAdminSignupPage() {
 
   if (reference) {
     return (
-      <OpsAdminShell>
+      <OpsAdminShell subtitle="SUPER ADMIN" headerRight={ceoHeaderLabel}>
         <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
@@ -690,14 +704,8 @@ export function OpsAdminSignupPage() {
               Reference {reference} · Super Admin access
             </p>
             <div className="mt-5 flex flex-col gap-2">
-              <Link to="/ops-admin/sign-in" className={buttonStyles('primary', 'lg', 'w-full')}>
-                Go to the admin sign-in
-              </Link>
-              <Link
-                to="/ops-admin"
-                className="inline-flex min-h-11 items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-              >
-                Back to Ops Admin
+              <Link to={`/super-admin/sign-in?ref=${reference}`} className={buttonStyles('primary', 'lg', 'w-full')}>
+                Go to the super admin sign-in
               </Link>
             </div>
           </div>
@@ -707,7 +715,7 @@ export function OpsAdminSignupPage() {
   }
 
   return (
-    <OpsAdminShell>
+    <OpsAdminShell subtitle="SUPER ADMIN" headerRight={ceoHeaderLabel}>
       <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
         <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1d4ed8]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#1d4ed8]">
@@ -807,15 +815,168 @@ export function OpsAdminSignupPage() {
 
           <p className="mt-4 text-center">
             <Link
-              to="/ops-admin"
+              to="/super-admin"
               className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
             >
-              <ArrowLeft size={12} /> Back to Ops Admin
+              <ArrowLeft size={12} /> Back to Super Admin
             </Link>
           </p>
         </div>
       </main>
     </OpsAdminShell>
+  )
+}
+
+export function SuperAdminSignInPage() {
+  const { configured, loading, session, profile, signIn } = useAuth()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [params] = useSearchParams()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [reference, setReference] = useState(params.get('ref') ?? '')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [signedIn, setSignedIn] = useState(false)
+
+  useEffect(() => {
+    if (!configured || !signedIn || !session || !profile) return
+    navigate(profile.role === 'admin' ? '/admin' : roleConfigs[profile.role].home, { replace: true })
+  }, [configured, signedIn, session, profile, navigate])
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    if (!looksLikeEmail(email)) {
+      setError('Enter your email address.')
+      return
+    }
+    if (!password) {
+      setError('Enter your password.')
+      return
+    }
+    if (reference.trim().length < 4) {
+      setError('Enter the reference number from your access request.')
+      return
+    }
+    setBusy(true)
+    const result = await signIn(email, password)
+    setBusy(false)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    toast('Welcome back', { description: 'Opening the Super Admin console…', tone: 'success' })
+    setSignedIn(true)
+  }
+
+  if (!configured) {
+    return (
+      <AuthShell>
+        <DemoPanel role="admin" />
+      </AuthShell>
+    )
+  }
+
+  return (
+    <SuperAdminShell>
+      <main id="main-content" tabIndex={-1} className="flex flex-1 items-center justify-center py-10 outline-none">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 text-foreground shadow-[0_30px_80px_-30px_rgba(0,0,0,0.65)] sm:p-8">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1d4ed8]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#1d4ed8]">
+            <Crown size={12} /> Restricted access
+          </span>
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="text-sm font-bold text-foreground">Chidera Uzoma</p>
+            <span className="rounded-full bg-[#1d4ed8]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#1d4ed8]">
+              Super Admin
+            </span>
+          </div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Chief Executive · Full platform access · WAT</p>
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            Sign in to the Super Admin console for platform ownership, roles &amp; access and security.
+          </p>
+
+          <form onSubmit={submit} className="mt-5 space-y-3.5" noValidate>
+            <label className="block text-left">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground">Email address</span>
+              <input
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@neurobloom.ng"
+                className={opsFieldClass}
+                required
+              />
+            </label>
+            <div className="text-left">
+              <label htmlFor="super-admin-password" className="mb-1.5 block text-xs font-semibold text-foreground">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="super-admin-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className={cn(opsFieldClass, 'pr-11')}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((shown) => !shown)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#1d4ed8]"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <label className="block text-left">
+              <span className="mb-1.5 block text-xs font-semibold text-foreground">Reference number</span>
+              <input
+                type="text"
+                value={reference}
+                onChange={(event) => setReference(event.target.value)}
+                placeholder="OPS-XXXXXX"
+                className={opsFieldClass}
+                required
+              />
+            </label>
+
+            {error ? <ErrorNote>{error}</ErrorNote> : null}
+
+            <button
+              type="submit"
+              disabled={busy || loading}
+              className="flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-[#1d4ed8] text-sm font-bold text-white transition hover:bg-[#1e40af] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? 'Signing you in…' : 'Enter'} {busy ? null : <ArrowRight size={15} />}
+            </button>
+            <p className="-mt-1 text-right">
+              <Link
+                to="/forgot-password"
+                className="inline-flex min-h-11 items-center px-1 text-[11px] font-semibold text-red-600 hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </p>
+          </form>
+
+          <p className="mt-2 text-center">
+            <Link
+              to="/super-admin"
+              className="inline-flex min-h-11 items-center gap-1 px-2 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft size={12} /> Back to Super Admin
+            </Link>
+          </p>
+        </div>
+      </main>
+    </SuperAdminShell>
   )
 }
 
