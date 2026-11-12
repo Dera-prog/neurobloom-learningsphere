@@ -1047,7 +1047,7 @@ export function SuperAdminSignInPage() {
 
   useEffect(() => {
     if (!configured || !signedIn || !session || !profile) return
-    navigate(profile.role === 'admin' ? '/admin' : roleConfigs[profile.role].home, { replace: true })
+    navigate(profile.role === 'admin' ? '/super-admin/console' : roleConfigs[profile.role].home, { replace: true })
   }, [configured, signedIn, session, profile, navigate])
 
   async function submit(event: FormEvent) {

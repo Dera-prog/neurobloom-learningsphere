@@ -15,6 +15,7 @@ import {
   SignupPage,
 } from './pages/Auth'
 import { PaymentCallbackPage } from './pages/PaymentCallback'
+import { SuperAdminConsole } from './pages/super-admin-console'
 import { ParentAccessRegisterPage } from './pages/ParentAccessRegister'
 import { RequireRole } from './components/guards'
 import type { Audience } from './data/content'
@@ -90,6 +91,7 @@ const routeTitles: Record<string, string> = {
   '/ops-admin/sign-up': 'Admin account request · NeuroBloom',
   '/super-admin': 'Super Admin · NeuroBloom',
   '/super-admin/sign-in': 'Super Admin sign-in · NeuroBloom',
+  '/super-admin/console': 'Super Admin console · NeuroBloom',
   '/signup': 'Create account · NeuroBloom',
   '/parent-access/register': 'Parent Access registration · NeuroBloom',
   '/auth/callback': 'Signing you in · NeuroBloom',
@@ -216,6 +218,7 @@ export default function App() {
         <Route path="/ops-admin" element={<OpsAdminLandingPage />} />
         <Route path="/super-admin" element={<SuperAdminLandingPage />} />
         <Route path="/super-admin/sign-in" element={<SuperAdminSignInPage />} />
+        <Route path="/super-admin/console" element={guard('admin', <SuperAdminConsole />)} />
         <Route path="/ops-admin/sign-in" element={<OpsAdminLoginPage />} />
         <Route path="/ops-admin/sign-up" element={<OpsAdminSignupPage />} />
         <Route path="/signup" element={<SignupPage />} />

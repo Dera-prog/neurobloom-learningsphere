@@ -234,7 +234,7 @@ export function AdminHome() {
     <ConsolePage
       title="Platform overview"
       subtitle="Growth, approvals, moderation and money at a glance"
-      badge={<Badge tone="role">Super Admin</Badge>}
+      badge={<Badge tone="role">Admin</Badge>}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
