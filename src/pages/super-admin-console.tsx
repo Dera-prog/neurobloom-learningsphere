@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
   BarChart3,
   Crown,
   FileText,
@@ -305,9 +303,6 @@ export function SuperAdminConsole() {
 
   const active = SECTIONS.find((item) => item.id === params.section) ?? SECTIONS[0]
   const knownSection = !params.section || SECTIONS.some((item) => item.id === params.section)
-  const activeIndex = SECTIONS.findIndex((item) => item.id === active.id)
-  const previous = activeIndex > 0 ? SECTIONS[activeIndex - 1] : null
-  const next = activeIndex < SECTIONS.length - 1 ? SECTIONS[activeIndex + 1] : null
 
   useEffect(() => {
     if (!knownSection) navigate('/super-admin/console', { replace: true })
@@ -913,33 +908,6 @@ export function SuperAdminConsole() {
               Every figure on this console is read live from Supabase and the serverless API. This console is separate from
               the Admin Manager workspace used by the operations team.
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              {previous ? (
-                <Link
-                  to={pathFor(previous.id)}
-                  className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-[#e3e6f0] bg-white px-3 text-[11px] font-semibold text-slate-600 transition hover:text-slate-900"
-                >
-                  <ArrowLeft size={12} /> {previous.label}
-                </Link>
-              ) : null}
-              {next ? (
-                <Link
-                  to={pathFor(next.id)}
-                  className="inline-flex min-h-11 items-center gap-1 rounded-xl bg-[#1d4ed8] px-3 text-[11px] font-semibold text-white transition hover:bg-[#1e40af]"
-                >
-                  {next.label} <ArrowRight size={12} />
-                </Link>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <Link
-              to="/super-admin"
-              className="inline-flex min-h-11 items-center gap-1 text-[11px] font-semibold text-slate-500 transition hover:text-slate-900"
-            >
-              <ArrowLeft size={12} /> Super Admin role overview
-            </Link>
             {profile?.email ? (
               <span className="hidden items-center gap-1 text-[10px] text-slate-400 sm:flex">
                 <FileText size={11} /> {profile.email}
