@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   BarChart3,
   Cloud,
   CreditCard,
@@ -86,8 +87,19 @@ const SECTIONS = [
   },
 ] as const
 
+const PROFILE_SECTION = {
+  id: 'profile',
+  label: 'Profile',
+  icon: UserCheck,
+  blurb: 'Your Super Admin identity and what this seat owns.',
+  copy: 'Your owner-level identity on the platform, read from the auth service and the live console feed.',
+} as const
+
+const ALL_SECTIONS = [...SECTIONS, PROFILE_SECTION]
+
 type SectionId = (typeof SECTIONS)[number]['id']
 
+const profilePath = '/super-admin/console/profile'
 const pathFor = (id: SectionId) => (id === 'overview' ? '/super-admin/console' : `/super-admin/console/${id}`)
 
 /* ------------------------------ Live data -------------------------------- */
@@ -236,11 +248,11 @@ function childName(id: string) {
 type Tone = 'ok' | 'warn' | 'urgent' | 'info' | 'neutral'
 
 const CHIP_TONE: Record<Tone, string> = {
-  ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  warn: 'bg-amber-50 text-amber-700 border-amber-200',
-  urgent: 'bg-red-50 text-red-700 border-red-200',
-  info: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  neutral: 'bg-slate-50 text-slate-600 border-slate-200',
+  ok: 'bg-emerald-400/10 text-emerald-300 border-emerald-400/25',
+  warn: 'bg-amber-400/10 text-amber-300 border-amber-400/25',
+  urgent: 'bg-red-400/10 text-red-300 border-red-400/25',
+  info: 'bg-indigo-400/15 text-indigo-200 border-indigo-400/30',
+  neutral: 'bg-white/[0.06] text-white/65 border-white/10',
 }
 
 function Chip({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: Tone }) {
@@ -265,18 +277,18 @@ function Panel({
   className?: string
 }) {
   return (
-    <section className={cn('overflow-hidden rounded-2xl border border-[#e6e8f2] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]', className)}>
-      <div className="flex items-center justify-between gap-3 border-b border-[#eef0f6] px-4 py-3 sm:px-5">
+    <section className={cn('overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]', className)}>
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           {Icon ? (
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#f2f4fb] text-[#4f46e5]">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[#a5b4fc]">
               <Icon size={14} />
             </span>
           ) : null}
-          <h2 className="truncate text-[13px] font-bold text-slate-800">{title}</h2>
+          <h2 className="truncate text-[13px] font-bold text-white">{title}</h2>
         </div>
         {badge ? (
-          <span className="shrink-0 rounded-full border border-[#e6e8f2] bg-[#f8f9fd] px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+          <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold text-white/55">
             {badge}
           </span>
         ) : null}
@@ -288,17 +300,17 @@ function Panel({
 
 function Row({ label, value, tone, note }: { label: string; value: string; tone?: Tone; note?: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-[#f1f3f9] py-2.5 last:border-0">
+    <div className="flex items-start justify-between gap-3 border-b border-white/[0.07] py-2.5 last:border-0">
       <span className="min-w-0">
-        <span className="block text-[12px] font-medium text-slate-600">{label}</span>
-        {note ? <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-400">{note}</span> : null}
+        <span className="block text-[12px] font-medium text-white/60">{label}</span>
+        {note ? <span className="mt-0.5 block text-[10px] leading-relaxed text-white/35">{note}</span> : null}
       </span>
       {tone ? (
         <span className="shrink-0 pt-0.5">
           <Chip tone={tone}>{value}</Chip>
         </span>
       ) : (
-        <span className="shrink-0 pt-0.5 text-right text-[12px] font-semibold text-slate-900">{value}</span>
+        <span className="shrink-0 pt-0.5 text-right text-[12px] font-semibold text-white">{value}</span>
       )}
     </div>
   )
@@ -306,7 +318,7 @@ function Row({ label, value, tone, note }: { label: string; value: string; tone?
 
 function EmptyNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3.5 text-[12px] leading-relaxed text-slate-500">
+    <p className="rounded-xl border border-dashed border-white/15 bg-white/[0.03] p-3.5 text-[12px] leading-relaxed text-white/50">
       {children}
     </p>
   )
@@ -317,7 +329,7 @@ function Avatar({ name, tone = 'info' }: { name: string; tone?: 'info' | 'neutra
     <span
       className={cn(
         'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
-        tone === 'info' ? 'bg-[#eef2ff] text-[#4338ca]' : 'bg-slate-100 text-slate-600',
+        tone === 'info' ? 'bg-indigo-400/15 text-indigo-200' : 'bg-white/10 text-white/70',
       )}
       aria-hidden
     >
@@ -327,10 +339,10 @@ function Avatar({ name, tone = 'info' }: { name: string; tone?: 'info' | 'neutra
 }
 
 const STAT_TONES = {
-  indigo: 'bg-[#eef2ff] text-[#4338ca]',
-  emerald: 'bg-emerald-50 text-emerald-600',
-  amber: 'bg-amber-50 text-amber-600',
-  violet: 'bg-violet-50 text-violet-600',
+  indigo: 'bg-indigo-400/15 text-indigo-300',
+  emerald: 'bg-emerald-400/15 text-emerald-300',
+  amber: 'bg-amber-400/15 text-amber-300',
+  violet: 'bg-violet-400/15 text-violet-300',
 } as const
 
 function StatCard({
@@ -347,22 +359,22 @@ function StatCard({
   tone?: keyof typeof STAT_TONES
 }) {
   return (
-    <div className="rounded-2xl border border-[#e6e8f2] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:-translate-y-0.5 hover:border-[#d8ddf1] hover:shadow-[0_14px_30px_-22px_rgba(30,41,90,0.45)]">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06]">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/45">{label}</p>
         <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl', STAT_TONES[tone])}>
           <Icon size={15} />
         </span>
       </div>
-      <p className="mt-2 text-[26px] font-extrabold leading-none tracking-tight text-slate-900">{value}</p>
-      <p className="mt-1.5 text-[11px] font-medium text-slate-500">{sub}</p>
+      <p className="mt-2 text-[26px] font-extrabold leading-none tracking-tight text-white">{value}</p>
+      <p className="mt-1.5 text-[11px] font-medium text-white/45">{sub}</p>
     </div>
   )
 }
 
 function LoadingBlock({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-[#e6e8f2] bg-white p-4 text-[12px] font-semibold text-slate-500">
+    <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-[12px] font-semibold text-white/60">
       <RefreshCw size={14} className="animate-spin" /> {label}
     </div>
   )
@@ -373,10 +385,10 @@ function DotList({ items }: { items: Array<{ title: string; detail: string }> })
     <ul className="space-y-2.5">
       {items.map((item) => (
         <li key={item.title} className="flex items-start gap-2.5">
-          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6366f1]" aria-hidden />
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#a5b4fc]" aria-hidden />
           <span>
-            <span className="block text-[12px] font-semibold text-slate-700">{item.title}</span>
-            <span className="block text-[11px] leading-relaxed text-slate-500">{item.detail}</span>
+            <span className="block text-[12px] font-semibold text-white/85">{item.title}</span>
+            <span className="block text-[11px] leading-relaxed text-white/45">{item.detail}</span>
           </span>
         </li>
       ))}
@@ -414,8 +426,8 @@ export function SuperAdminConsole() {
   const name = profile?.full_name || 'Super Admin'
   const email = profile?.email || 'Owner access'
 
-  const active = SECTIONS.find((item) => item.id === params.section) ?? SECTIONS[0]
-  const knownSection = !params.section || SECTIONS.some((item) => item.id === params.section)
+  const active = ALL_SECTIONS.find((item) => item.id === params.section) ?? SECTIONS[0]
+  const knownSection = !params.section || ALL_SECTIONS.some((item) => item.id === params.section)
 
   useEffect(() => {
     if (!knownSection) navigate('/super-admin/console', { replace: true })
@@ -480,6 +492,7 @@ export function SuperAdminConsole() {
   const paystackModeLabel =
     data?.paystackMode === 'live' ? 'Live keys' : data?.paystackMode === 'test' ? 'Test keys' : 'Not configured'
   const reportFilesLabel = reportFiles == null ? 'Bucket unavailable' : reportFiles.toLocaleString()
+  const me = derived.accounts.find((account) => account.id === profile?.id) ?? null
 
   function renderSection() {
     if (active.id === 'overview') {
@@ -527,12 +540,12 @@ export function SuperAdminConsole() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[460px] text-left">
                     <thead>
-                      <tr className="border-b border-[#eef0f6]">
+                      <tr className="border-b border-white/10">
                         {['Date', 'Account', 'Plan', 'Amount', 'Status'].map((heading) => (
                           <th
                             key={heading}
                             scope="col"
-                            className="px-1.5 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"
+                            className="px-1.5 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white/40"
                           >
                             {heading}
                           </th>
@@ -541,22 +554,25 @@ export function SuperAdminConsole() {
                     </thead>
                     <tbody>
                       {derived.payments.slice(0, 6).map((payment) => (
-                        <tr key={payment.id} className="border-b border-[#f1f3f9] transition last:border-0 hover:bg-[#f8f9fe]">
-                          <td className="whitespace-nowrap px-1.5 py-2.5 text-[11px] text-slate-500">
+                        <tr
+                          key={payment.id}
+                          className="border-b border-white/[0.07] transition last:border-0 hover:bg-white/[0.03]"
+                        >
+                          <td className="whitespace-nowrap px-1.5 py-2.5 text-[11px] text-white/50">
                             {formatDate(payment.paid_at || payment.created_at)}
                           </td>
                           <td className="max-w-[150px] px-1.5 py-2.5">
                             <span className="flex items-center gap-2">
                               <Avatar name={derived.names.get(payment.user_id) ?? '?'} />
-                              <span className="truncate text-[12px] font-semibold text-slate-800">
+                              <span className="truncate text-[12px] font-semibold text-white/85">
                                 {derived.names.get(payment.user_id) ?? 'Unknown account'}
                               </span>
                             </span>
                           </td>
-                          <td className="px-1.5 py-2.5 text-[11px] text-slate-600">
+                          <td className="px-1.5 py-2.5 text-[11px] text-white/55">
                             {PLAN_LABEL[payment.plan_id] ?? payment.plan_id} · {childName(payment.child_id)}
                           </td>
-                          <td className="whitespace-nowrap px-1.5 py-2.5 text-[12px] font-bold text-slate-900">
+                          <td className="whitespace-nowrap px-1.5 py-2.5 text-[12px] font-bold text-white">
                             {naira((Number(payment.amount) || 0) / 100)}
                           </td>
                           <td className="px-1.5 py-2.5">
@@ -597,15 +613,15 @@ export function SuperAdminConsole() {
                 {derived.accounts.slice(0, 4).map((account) => (
                   <li
                     key={account.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5 transition hover:border-[#dfe4f3] hover:bg-[#f8f9fe]"
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2.5 transition hover:border-white/20 hover:bg-white/[0.05]"
                   >
                     <span className="flex min-w-0 items-center gap-2.5">
                       <Avatar name={account.name || account.email || '?'} />
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-semibold text-slate-800">
+                        <span className="block truncate text-[12px] font-semibold text-white/85">
                           {account.name || account.email}
                         </span>
-                        <span className="block truncate text-[11px] text-slate-500">{account.email || 'No email on file'}</span>
+                        <span className="block truncate text-[11px] text-white/45">{account.email || 'No email on file'}</span>
                       </span>
                     </span>
                     <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>{ROLE_LABEL[account.role] ?? account.role}</Chip>
@@ -636,12 +652,12 @@ export function SuperAdminConsole() {
             <div className="-mx-4 overflow-x-auto sm:-mx-5">
               <table className="w-full min-w-[680px] text-left">
                 <thead>
-                  <tr className="border-b border-[#eef0f6]">
+                  <tr className="border-b border-white/10">
                     {['Account', 'Role', 'Joined', 'Last sign-in'].map((heading) => (
                       <th
                         key={heading}
                         scope="col"
-                        className="px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 sm:px-5"
+                        className="px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white/40 sm:px-5"
                       >
                         {heading}
                       </th>
@@ -650,15 +666,18 @@ export function SuperAdminConsole() {
                 </thead>
                 <tbody>
                   {derived.accounts.map((account) => (
-                    <tr key={account.id} className="border-b border-[#f1f3f9] transition last:border-0 hover:bg-[#f8f9fe]">
+                    <tr
+                      key={account.id}
+                      className="border-b border-white/[0.07] transition last:border-0 hover:bg-white/[0.03]"
+                    >
                       <td className="px-4 py-3 sm:px-5">
                         <span className="flex items-center gap-2.5">
                           <Avatar name={account.name || account.email || '?'} />
                           <span className="min-w-0">
-                            <span className="block truncate text-[12px] font-semibold text-slate-800">
+                            <span className="block truncate text-[12px] font-semibold text-white/85">
                               {account.name || 'Unnamed account'}
                             </span>
-                            <span className="block truncate text-[11px] text-slate-500">{account.email || 'No email'}</span>
+                            <span className="block truncate text-[11px] text-white/45">{account.email || 'No email'}</span>
                           </span>
                         </span>
                       </td>
@@ -667,8 +686,8 @@ export function SuperAdminConsole() {
                           {ROLE_LABEL[account.role] ?? account.role}
                         </Chip>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[11px] text-slate-600 sm:px-5">{formatDate(account.joinedAt)}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[11px] text-slate-600 sm:px-5">
+                      <td className="whitespace-nowrap px-4 py-3 text-[11px] text-white/55 sm:px-5">{formatDate(account.joinedAt)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[11px] text-white/55 sm:px-5">
                         {account.lastSignInAt ? formatDateTime(account.lastSignInAt) : 'Never signed in'}
                       </td>
                     </tr>
@@ -676,7 +695,7 @@ export function SuperAdminConsole() {
                 </tbody>
               </table>
             </div>
-            {!derived.accounts.length ? <p className="pt-3 text-[12px] text-slate-500">No accounts yet.</p> : null}
+            {!derived.accounts.length ? <p className="pt-3 text-[12px] text-white/50">No accounts yet.</p> : null}
           </Panel>
         </div>
       )
@@ -711,13 +730,13 @@ export function SuperAdminConsole() {
           </div>
 
           <Panel title="Incident queue" icon={LifeBuoy}>
-            <div className="flex items-start gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-400">
+            <div className="flex items-start gap-3 rounded-xl border border-dashed border-white/15 bg-white/[0.03] p-3.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/50">
                 <LifeBuoy size={15} />
               </span>
               <div>
-                <p className="text-[12px] font-bold text-slate-700">No incident log is connected yet</p>
-                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-500">
+                <p className="text-[12px] font-bold text-white/85">No incident log is connected yet</p>
+                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-white/50">
                   The platform has no safeguarding table, so this queue is intentionally empty rather than filled with sample
                   incidents. Once an incident register is added, flagged cases will be reviewed here.
                 </p>
@@ -748,7 +767,7 @@ export function SuperAdminConsole() {
                   { title: 'Action taken and owner', detail: 'The decision, the person responsible and the follow-up date.' },
                 ]}
               />
-              <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+              <p className="mt-3 text-[10px] leading-relaxed text-white/35">
                 Nothing is stored in this queue today — these are the fields the register is scoped to hold once it ships.
               </p>
             </Panel>
@@ -831,11 +850,11 @@ export function SuperAdminConsole() {
                   {derived.emails.slice(0, 8).map((item) => (
                     <li
                       key={item.id}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5 transition hover:bg-[#f8f9fe]"
+                      className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2.5 transition hover:bg-white/[0.05]"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[12px] font-semibold text-slate-800">{item.recipient}</span>
-                        <span className="block text-[10px] text-slate-500">
+                        <span className="block truncate text-[12px] font-semibold text-white/85">{item.recipient}</span>
+                        <span className="block text-[10px] text-white/45">
                           {item.kind} · {formatDateTime(item.created_at)}
                         </span>
                       </span>
@@ -907,20 +926,20 @@ export function SuperAdminConsole() {
                   {derived.admins.map((admin) => (
                     <li
                       key={admin.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5 transition hover:border-[#dfe4f3] hover:bg-[#f8f9fe]"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-2.5 transition hover:border-white/20 hover:bg-white/[0.05]"
                     >
                       <span className="flex min-w-0 items-center gap-2.5">
                         <Avatar name={admin.name || admin.email || '?'} tone="info" />
                         <span className="min-w-0">
-                          <span className="block truncate text-[12px] font-semibold text-slate-800">
+                          <span className="block truncate text-[12px] font-semibold text-white/85">
                             {admin.name || admin.email}
                           </span>
-                          <span className="block truncate text-[11px] text-slate-500">{admin.email}</span>
+                          <span className="block truncate text-[11px] text-white/45">{admin.email}</span>
                         </span>
                       </span>
                       <span className="shrink-0 text-right">
                         <Chip tone="info">Administrator</Chip>
-                        <span className="mt-1 block text-[10px] text-slate-400">
+                        <span className="mt-1 block text-[10px] text-white/35">
                           {admin.lastSignInAt ? `Last in ${formatDate(admin.lastSignInAt)}` : 'Never signed in'}
                         </span>
                       </span>
@@ -987,16 +1006,16 @@ export function SuperAdminConsole() {
             {cards.map((vendor) => (
               <div
                 key={vendor.name}
-                className="rounded-2xl border border-[#e6e8f2] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:-translate-y-0.5 hover:border-[#d8ddf1] hover:shadow-[0_14px_30px_-22px_rgba(30,41,90,0.45)]"
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06]"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f2f4fb] text-[#4f46e5]">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-[#a5b4fc]">
                     <vendor.icon size={17} />
                   </span>
                   <Chip tone={vendor.ok ? 'ok' : 'warn'}>{vendor.ok ? vendor.okText : vendor.badText}</Chip>
                 </div>
-                <p className="mt-3 text-[13px] font-bold text-slate-900">{vendor.name}</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{vendor.use}</p>
+                <p className="mt-3 text-[13px] font-bold text-white">{vendor.name}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-white/45">{vendor.use}</p>
               </div>
             ))}
           </div>
@@ -1026,6 +1045,109 @@ export function SuperAdminConsole() {
               <Row label="Licence records" value="Not stored on this platform" />
             </Panel>
           </div>
+        </div>
+      )
+    }
+
+    if (active.id === 'profile') {
+      return (
+        <div className="space-y-3">
+          <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.05]">
+            <div className="relative px-5 py-6 sm:px-6">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-[#4338ca]/35 blur-3xl"
+              />
+              <div className="relative flex flex-wrap items-center gap-4">
+                <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-lg font-extrabold text-white shadow-[0_18px_40px_-18px_rgba(99,102,241,0.9)]">
+                  {initials(name)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-extrabold tracking-tight text-white">{name}</h2>
+                    <Chip tone="info">Super Admin</Chip>
+                    <Chip tone="neutral">Owner seat</Chip>
+                  </div>
+                  <p className="mt-0.5 truncate text-[12px] text-white/55">{email}</p>
+                  <p className="mt-1 text-[11px] text-white/40">
+                    {me?.joinedAt ? `On the platform since ${formatDate(me.joinedAt)}` : 'Account details are still loading.'}
+                    {me?.lastSignInAt ? ` · Last sign-in ${formatDateTime(me.lastSignInAt)}` : ''}
+                  </p>
+                </div>
+                <Link
+                  to="/super-admin/console"
+                  className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-white/20 px-4 text-[11px] font-semibold text-white transition hover:bg-white/10"
+                >
+                  <ArrowLeft size={13} /> Back to console
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard
+              label="Administrator seats"
+              value={derived.admins.length.toLocaleString()}
+              sub="Including this account"
+              icon={ShieldCheck}
+              tone="violet"
+            />
+            <StatCard
+              label="Accounts on platform"
+              value={derived.accounts.length.toLocaleString()}
+              sub="All roles"
+              icon={Users}
+            />
+            <StatCard
+              label="Integrations live"
+              value={`${derived.liveIntegrations} of 2`}
+              sub="Payments and email"
+              icon={Activity}
+              tone="emerald"
+            />
+            <StatCard
+              label="Evaluation reports"
+              value={reportFilesLabel}
+              sub="Private bucket files"
+              icon={FileText}
+              tone="amber"
+            />
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel title="Identity" icon={UserCheck}>
+              <Row label="Full name" value={name} />
+              <Row label="Email" value={email} />
+              <Row label="Role" value="Administrator" tone="info" />
+              <Row label="Account created" value={me?.joinedAt ? formatDate(me.joinedAt) : '—'} />
+              <Row label="Last sign-in" value={me?.lastSignInAt ? formatDateTime(me.lastSignInAt) : '—'} />
+              <Row label="Sign-in method" value="Email & password" />
+            </Panel>
+            <Panel title="Access & security" icon={KeyRound}>
+              <Row label="Console access" value="Server-verified role" tone="ok" />
+              <Row label="Session" value="Bearer token per request" />
+              <Row label="Service keys" value="Server-side only" tone="ok" />
+              <Row label="Payments ledger" value="Read-only" />
+              <Row label="Role changes" value="Owner seat" tone="info" />
+              <Row
+                label="Data refreshed"
+                value={data ? formatDateTime(data.generatedAt) : '—'}
+              />
+            </Panel>
+          </div>
+
+          <Panel title="What this seat owns" icon={Crown}>
+            <DotList
+              items={[
+                { title: 'Every account and role', detail: 'Issuing access and promoting or removing administrators.' },
+                { title: 'Child safeguarding', detail: 'Owning incident review and escalation across classes and chat.' },
+                { title: 'Data protection', detail: 'Keeping learner records private and the compliance promises honest.' },
+                { title: 'Platform reliability', detail: 'Keeping live classes, payments and email delivery running.' },
+                { title: 'Vendors and licences', detail: 'Managing the services the classroom depends on.' },
+                { title: 'The operations team', detail: 'Overseeing the Admin Manager workspace and its activity.' },
+              ]}
+            />
+          </Panel>
         </div>
       )
     }
@@ -1070,7 +1192,7 @@ export function SuperAdminConsole() {
         </div>
 
         {derived.failedEmails > 0 ? (
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
             <Mail size={12} /> {derived.failedEmails} email record{derived.failedEmails === 1 ? '' : 's'} did not report a
             successful send.
           </p>
@@ -1117,14 +1239,23 @@ export function SuperAdminConsole() {
   }
 
   return (
-    <div className="min-h-dvh bg-[#f6f7fc] text-slate-900">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-hidden border-r border-white/5 bg-[#141130] px-4 py-6 text-white lg:flex">
+    <div className="relative min-h-dvh overflow-hidden bg-[#171238] text-white">
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -left-24 top-10 h-80 w-80 rounded-full bg-[#4338ca]/40 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed -right-24 bottom-0 h-96 w-96 rounded-full bg-[#1d4ed8]/25 blur-3xl"
+      />
+
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-hidden border-r border-white/10 bg-[#120e2f]/95 px-4 py-6 text-white lg:flex">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_18%_-12%,rgba(99,102,241,0.5),transparent_62%)]"
         />
         <Link to="/super-admin" className="relative flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] shadow-[0_10px_24px_-10px_rgba(99,102,241,0.95)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10 shadow-[0_10px_24px_-12px_rgba(99,102,241,0.9)]">
             <Crown size={18} />
           </span>
           <span>
@@ -1133,7 +1264,10 @@ export function SuperAdminConsole() {
           </span>
         </Link>
 
-        <div className="relative mt-6 flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+        <Link
+          to={profilePath}
+          className="relative mt-6 flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.06] p-3 transition hover:border-white/20 hover:bg-white/[0.1]"
+        >
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-xs font-bold text-white">
             {initials(name)}
           </span>
@@ -1141,7 +1275,8 @@ export function SuperAdminConsole() {
             <p className="truncate text-xs font-bold text-white">{name}</p>
             <p className="truncate text-[10px] text-white/50">{email}</p>
           </div>
-        </div>
+          <ArrowLeft size={12} className="ml-auto rotate-180 text-white/35" aria-hidden />
+        </Link>
 
         <nav aria-label="Super Admin sections" className="relative mt-5 min-h-0 flex-1 space-y-0.5 overflow-y-auto">
           {SECTIONS.map((item) => (
@@ -1194,21 +1329,21 @@ export function SuperAdminConsole() {
         </div>
       </aside>
 
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 border-b border-[#e6e8f2] bg-[#f6f7fc]/85 backdrop-blur-xl">
+      <div className="relative lg:pl-64">
+        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#171238]/85 backdrop-blur-xl">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
             <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#4f46e5]">
+              <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#a5b4fc]">
                 <Crown size={11} /> Exclusive access
-                <span className="text-slate-300">/</span>
-                <span className="text-slate-400">{active.label}</span>
+                <span className="text-white/25">/</span>
+                <span className="text-white/45">{active.label}</span>
               </p>
-              <h1 className="mt-0.5 text-[22px] font-extrabold tracking-tight text-slate-900">{active.label}</h1>
-              <p className="text-[12px] text-slate-500">{active.blurb}</p>
+              <h1 className="mt-0.5 text-[22px] font-extrabold tracking-tight text-white">{active.label}</h1>
+              <p className="text-[12px] text-white/50">{active.blurb}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden items-center gap-1.5 rounded-full border border-[#e6e8f2] bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-[0_1px_2px_rgba(16,24,40,0.04)] sm:inline-flex">
-                <span className={cn('h-1.5 w-1.5 rounded-full', feed.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500')} />
+              <span className="hidden items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-white/70 sm:inline-flex">
+                <span className={cn('h-1.5 w-1.5 rounded-full', feed.status === 'ready' ? 'bg-emerald-400' : 'bg-amber-400')} />
                 Live data · {feed.status === 'ready' && data ? formatTime(data.generatedAt) : 'syncing'}
               </span>
               <button
@@ -1216,16 +1351,19 @@ export function SuperAdminConsole() {
                 onClick={() => void feed.reload()}
                 disabled={feed.status === 'loading'}
                 aria-label="Refresh live data"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e6e8f2] bg-white text-slate-500 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:text-slate-900 disabled:opacity-50"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white/60 transition hover:text-white disabled:opacity-50"
               >
                 <RefreshCw size={14} className={feed.status === 'loading' ? 'animate-spin' : undefined} />
               </button>
-              <span className="flex items-center gap-2 rounded-full border border-[#e6e8f2] bg-white py-1 pl-1 pr-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+              <Link
+                to={profilePath}
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1 pl-1 pr-3 transition hover:border-white/25 hover:bg-white/[0.1]"
+              >
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-[10px] font-bold text-white">
                   {initials(name)}
                 </span>
-                <span className="text-[11px] font-bold text-slate-700">{name}</span>
-              </span>
+                <span className="text-[11px] font-bold text-white/80">{name}</span>
+              </Link>
             </div>
           </div>
           <div className="mx-auto flex max-w-6xl gap-1.5 overflow-x-auto px-4 pb-2 sm:px-6 lg:hidden">
@@ -1237,7 +1375,9 @@ export function SuperAdminConsole() {
                 className={({ isActive }) =>
                   cn(
                     'whitespace-nowrap rounded-full border px-3 py-1.5 text-[10px] font-semibold transition',
-                    isActive ? 'border-[#4f46e5] bg-[#4f46e5] text-white' : 'border-[#e6e8f2] bg-white text-slate-600',
+                    isActive
+                      ? 'border-white bg-white text-[#171238]'
+                      : 'border-white/15 bg-white/[0.05] text-white/65',
                   )
                 }
               >
@@ -1249,33 +1389,33 @@ export function SuperAdminConsole() {
 
         <main id="main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none sm:px-6">
           {feed.status === 'error' ? (
-            <div className="mb-4 flex flex-wrap items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+            <div className="mb-4 flex flex-wrap items-start gap-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-300" />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-amber-900">Live data could not be loaded</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">{feed.error}</p>
+                <p className="text-xs font-bold text-amber-100">Live data could not be loaded</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/80">{feed.error}</p>
               </div>
               <button
                 type="button"
                 onClick={() => void feed.reload()}
-                className="rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-amber-800"
+                className="rounded-xl border border-amber-400/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-amber-100"
               >
                 Try again
               </button>
             </div>
           ) : null}
 
-          <p className="mb-4 max-w-3xl text-[12px] leading-relaxed text-slate-500">{active.copy}</p>
+          <p className="mb-4 max-w-3xl text-[12px] leading-relaxed text-white/50">{active.copy}</p>
 
           {renderSection()}
 
-          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[#e6e8f2] pt-5">
-            <p className="max-w-xl text-[10px] leading-relaxed text-slate-400">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
+            <p className="max-w-xl text-[10px] leading-relaxed text-white/35">
               Every figure on this console is read live from Supabase and the serverless API. This console is separate from
               the Admin Manager workspace used by the operations team.
             </p>
             {profile?.email ? (
-              <span className="hidden items-center gap-1 text-[10px] text-slate-400 sm:flex">
+              <span className="hidden items-center gap-1 text-[10px] text-white/35 sm:flex">
                 <FileText size={11} /> {profile.email}
               </span>
             ) : null}

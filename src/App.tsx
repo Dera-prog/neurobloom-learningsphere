@@ -99,6 +99,7 @@ const routeTitles: Record<string, string> = {
   '/super-admin/console/admins': 'Admins & activity · Super Admin · NeuroBloom',
   '/super-admin/console/vendors': 'Vendors & licences · Super Admin · NeuroBloom',
   '/super-admin/console/reports': 'Reports · Super Admin · NeuroBloom',
+  '/super-admin/console/profile': 'Profile · Super Admin · NeuroBloom',
   '/signup': 'Create account · NeuroBloom',
   '/parent-access/register': 'Parent Access registration · NeuroBloom',
   '/auth/callback': 'Signing you in · NeuroBloom',
