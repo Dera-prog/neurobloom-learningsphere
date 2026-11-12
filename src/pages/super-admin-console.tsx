@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  ChevronDown,
   Cloud,
   CreditCard,
   Crown,
@@ -267,17 +268,19 @@ function Panel({
   title,
   icon: Icon,
   badge,
+  action,
   children,
   className,
 }: {
   title: string
   icon?: LucideIcon
   badge?: string
+  action?: React.ReactNode
   children: React.ReactNode
   className?: string
 }) {
   return (
-    <section className={cn('overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]', className)}>
+    <section className={cn('rounded-2xl border border-white/10 bg-white/[0.04]', action ? 'overflow-visible' : 'overflow-hidden', className)}>
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
           {Icon ? (
@@ -287,11 +290,11 @@ function Panel({
           ) : null}
           <h2 className="truncate text-[13px] font-bold text-white">{title}</h2>
         </div>
-        {badge ? (
+        {action ?? (badge ? (
           <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold text-white/55">
             {badge}
           </span>
-        ) : null}
+        ) : null)}
       </div>
       <div className="px-4 py-3.5 sm:px-5">{children}</div>
     </section>
@@ -436,6 +439,31 @@ export function SuperAdminConsole() {
   useEffect(() => {
     window.scrollTo({ top: 0 })
   }, [active.id])
+
+  const [accountsMenuOpen, setAccountsMenuOpen] = useState(false)
+  const accountsMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setAccountsMenuOpen(false)
+  }, [active.id])
+
+  useEffect(() => {
+    if (!accountsMenuOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (accountsMenuRef.current && !accountsMenuRef.current.contains(event.target as Node)) {
+        setAccountsMenuOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountsMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [accountsMenuOpen])
 
   async function handleSignOut() {
     await signOut()
@@ -607,7 +635,52 @@ export function SuperAdminConsole() {
             </Panel>
           </div>
 
-          <Panel title="Newest accounts" icon={Users} badge={`${derived.accounts.length} total`}>
+          <Panel
+            title="Newest accounts"
+            icon={Users}
+            action={
+              <div ref={accountsMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setAccountsMenuOpen((open) => !open)}
+                  aria-expanded={accountsMenuOpen}
+                  aria-haspopup="true"
+                  className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-white/65 transition hover:border-white/25 hover:text-white"
+                >
+                  {derived.accounts.length} total
+                  <ChevronDown size={12} className={cn('transition', accountsMenuOpen && 'rotate-180')} />
+                </button>
+                {accountsMenuOpen ? (
+                  <div className="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/15 bg-[#1d1843] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
+                    <p className="border-b border-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white/45">
+                      All platform accounts
+                    </p>
+                    <ul data-accounts-menu className="max-h-72 overflow-y-auto">
+                      {derived.accounts.map((account) => (
+                        <li
+                          key={account.id}
+                          className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2.5 last:border-0"
+                        >
+                          <span className="flex min-w-0 items-center gap-2.5">
+                            <Avatar name={account.name || account.email || '?'} />
+                            <span className="min-w-0">
+                              <span className="block truncate text-[12px] font-semibold text-white/85">
+                                {account.name || 'Unnamed account'}
+                              </span>
+                              <span className="block truncate text-[10px] text-white/45">{account.email || 'No email'}</span>
+                            </span>
+                          </span>
+                          <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>
+                            {ROLE_LABEL[account.role] ?? account.role}
+                          </Chip>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            }
+          >
             {derived.accounts.length ? (
               <ul className="grid gap-2 sm:grid-cols-2">
                 {derived.accounts.slice(0, 4).map((account) => (
