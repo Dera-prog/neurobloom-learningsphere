@@ -18,6 +18,23 @@ async function adminUsers() {
   }
 }
 
+/** Files in the private evaluation-reports bucket; null when the bucket cannot be listed. */
+async function evaluationReportCount() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  try {
+    const response = await fetch(`${supabaseUrl()}/storage/v1/object/list/evaluation-reports`, {
+      method: 'POST',
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 1000, offset: 0, prefix: '' }),
+    })
+    if (!response.ok) return null
+    const rows = await response.json()
+    return Array.isArray(rows) ? rows.filter((row) => row && row.id).length : null
+  } catch {
+    return null
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, max-age=0')
   if (req.method !== 'GET') {
@@ -34,7 +51,7 @@ export default async function handler(req, res) {
     return fail(res, 403, 'forbidden', 'This console is limited to administrator accounts.')
   }
 
-  const [profiles, payments, emails, states, auth] = await Promise.all([
+  const [profiles, payments, emails, states, auth, reportFiles] = await Promise.all([
     rest('/rest/v1/profiles?select=id,role,full_name,email,created_at&order=created_at.desc&limit=1000'),
     rest(
       '/rest/v1/payments?select=id,user_id,child_id,plan_id,reference,amount,currency,status,channel,paid_at,created_at&order=created_at.desc&limit=500',
@@ -42,6 +59,7 @@ export default async function handler(req, res) {
     rest('/rest/v1/email_log?select=id,recipient,kind,status,detail,created_at&order=created_at.desc&limit=200'),
     rest('/rest/v1/user_state?select=user_id,updated_at&limit=1000'),
     adminUsers(),
+    evaluationReportCount(),
   ])
 
   if (!profiles.ok) {
@@ -65,12 +83,15 @@ export default async function handler(req, res) {
     activeThisWeek: stateRows.filter((row) => row.updated_at && new Date(row.updated_at).getTime() >= weekAgo).length,
   }
 
-  const paystackReady = Boolean(process.env.PAYSTACK_SECRET_KEY)
+  const paystackKey = process.env.PAYSTACK_SECRET_KEY || ''
+  const paystackMode = paystackKey.startsWith('sk_live_') ? 'live' : paystackKey.startsWith('sk_test_') ? 'test' : null
   const emailReady = Boolean(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)
 
   return send(res, 200, {
     generatedAt: new Date().toISOString(),
-    integrations: { payments: paystackReady, email: emailReady, database: true },
+    integrations: { payments: Boolean(paystackKey), email: emailReady, database: true },
+    paystackMode,
+    evaluationReports: reportFiles,
     accounts,
     payments: Array.isArray(payments.data) ? payments.data : [],
     emails: Array.isArray(emails.data) ? emails.data : [],

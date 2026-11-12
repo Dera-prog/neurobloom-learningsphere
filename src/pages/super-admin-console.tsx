@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
+  Cloud,
+  CreditCard,
   Crown,
+  Database,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LifeBuoy,
   Lock,
@@ -14,8 +19,10 @@ import {
   RefreshCw,
   Settings,
   ShieldCheck,
+  UserCheck,
   Users,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { cn, initials, naira } from '../lib/utils'
@@ -59,7 +66,7 @@ const SECTIONS = [
   {
     id: 'admins',
     label: 'Admins & activity',
-    icon: Users,
+    icon: UserCheck,
     blurb: 'The accounts that hold administrator access.',
     copy: 'The accounts that actually hold administrator access, with their latest sign-in taken from the auth service.',
   },
@@ -126,6 +133,8 @@ interface Integrations {
 interface ConsoleData {
   generatedAt: string
   integrations: Integrations
+  paystackMode: 'live' | 'test' | null
+  evaluationReports: number | null
   accounts: AccountRow[]
   payments: PaymentRow[]
   emails: EmailRow[]
@@ -224,52 +233,154 @@ function childName(id: string) {
   return id ? id.charAt(0).toUpperCase() + id.slice(1) : '—'
 }
 
-function chipTone(tone: string) {
-  if (tone === 'ok') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-  if (tone === 'warn') return 'bg-amber-50 text-amber-700 border-amber-200'
-  if (tone === 'urgent') return 'bg-red-50 text-red-700 border-red-200'
-  if (tone === 'info') return 'bg-indigo-50 text-indigo-700 border-indigo-200'
-  return 'bg-slate-100 text-slate-600 border-slate-200'
+type Tone = 'ok' | 'warn' | 'urgent' | 'info' | 'neutral'
+
+const CHIP_TONE: Record<Tone, string> = {
+  ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  warn: 'bg-amber-50 text-amber-700 border-amber-200',
+  urgent: 'bg-red-50 text-red-700 border-red-200',
+  info: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  neutral: 'bg-slate-50 text-slate-600 border-slate-200',
 }
 
-function Panel({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+function Chip({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: Tone }) {
   return (
-    <div className="rounded-2xl border border-[#e3e6f0] bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.04)] sm:p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-bold uppercase tracking-[0.06em] text-slate-500">{title}</h2>
+    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', CHIP_TONE[tone])}>
+      {children}
+    </span>
+  )
+}
+
+function Panel({
+  title,
+  icon: Icon,
+  badge,
+  children,
+  className,
+}: {
+  title: string
+  icon?: LucideIcon
+  badge?: string
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <section className={cn('overflow-hidden rounded-2xl border border-[#e6e8f2] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]', className)}>
+      <div className="flex items-center justify-between gap-3 border-b border-[#eef0f6] px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {Icon ? (
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#f2f4fb] text-[#4f46e5]">
+              <Icon size={14} />
+            </span>
+          ) : null}
+          <h2 className="truncate text-[13px] font-bold text-slate-800">{title}</h2>
+        </div>
         {badge ? (
-          <span className={cn('rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide', chipTone('neutral'))}>
+          <span className="shrink-0 rounded-full border border-[#e6e8f2] bg-[#f8f9fd] px-2 py-0.5 text-[10px] font-semibold text-slate-500">
             {badge}
           </span>
         ) : null}
       </div>
-      {children}
-    </div>
+      <div className="px-4 py-3.5 sm:px-5">{children}</div>
+    </section>
   )
 }
 
-function Row({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Row({ label, value, tone, note }: { label: string; value: string; tone?: Tone; note?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-[#eef0f6] py-2 last:border-0">
-      <span className="text-[11px] font-semibold text-slate-700">{label}</span>
+    <div className="flex items-start justify-between gap-3 border-b border-[#f1f3f9] py-2.5 last:border-0">
+      <span className="min-w-0">
+        <span className="block text-[12px] font-medium text-slate-600">{label}</span>
+        {note ? <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-400">{note}</span> : null}
+      </span>
       {tone ? (
-        <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold', chipTone(tone))}>{value}</span>
+        <span className="shrink-0 pt-0.5">
+          <Chip tone={tone}>{value}</Chip>
+        </span>
       ) : (
-        <span className="text-right text-[11px] text-slate-500">{value}</span>
+        <span className="shrink-0 pt-0.5 text-right text-[12px] font-semibold text-slate-900">{value}</span>
       )}
     </div>
   )
 }
 
 function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-xl border border-dashed border-[#dfe3ef] bg-[#fafbfe] p-3 text-[11px] leading-relaxed text-slate-500">{children}</p>
+  return (
+    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3.5 text-[12px] leading-relaxed text-slate-500">
+      {children}
+    </p>
+  )
+}
+
+function Avatar({ name, tone = 'info' }: { name: string; tone?: 'info' | 'neutral' }) {
+  return (
+    <span
+      className={cn(
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+        tone === 'info' ? 'bg-[#eef2ff] text-[#4338ca]' : 'bg-slate-100 text-slate-600',
+      )}
+      aria-hidden
+    >
+      {initials(name || '?')}
+    </span>
+  )
+}
+
+const STAT_TONES = {
+  indigo: 'bg-[#eef2ff] text-[#4338ca]',
+  emerald: 'bg-emerald-50 text-emerald-600',
+  amber: 'bg-amber-50 text-amber-600',
+  violet: 'bg-violet-50 text-violet-600',
+} as const
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  tone = 'indigo',
+}: {
+  label: string
+  value: string
+  sub: string
+  icon: LucideIcon
+  tone?: keyof typeof STAT_TONES
+}) {
+  return (
+    <div className="rounded-2xl border border-[#e6e8f2] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:-translate-y-0.5 hover:border-[#d8ddf1] hover:shadow-[0_14px_30px_-22px_rgba(30,41,90,0.45)]">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</p>
+        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl', STAT_TONES[tone])}>
+          <Icon size={15} />
+        </span>
+      </div>
+      <p className="mt-2 text-[26px] font-extrabold leading-none tracking-tight text-slate-900">{value}</p>
+      <p className="mt-1.5 text-[11px] font-medium text-slate-500">{sub}</p>
+    </div>
+  )
 }
 
 function LoadingBlock({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-[#e3e6f0] bg-white p-4 text-[11px] font-semibold text-slate-500">
-      <RefreshCw size={13} className="animate-spin" /> {label}
+    <div className="flex items-center gap-2 rounded-2xl border border-[#e6e8f2] bg-white p-4 text-[12px] font-semibold text-slate-500">
+      <RefreshCw size={14} className="animate-spin" /> {label}
     </div>
+  )
+}
+
+function DotList({ items }: { items: Array<{ title: string; detail: string }> }) {
+  return (
+    <ul className="space-y-2.5">
+      {items.map((item) => (
+        <li key={item.title} className="flex items-start gap-2.5">
+          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6366f1]" aria-hidden />
+          <span>
+            <span className="block text-[12px] font-semibold text-slate-700">{item.title}</span>
+            <span className="block text-[11px] leading-relaxed text-slate-500">{item.detail}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -287,6 +398,8 @@ interface Derived {
   latestPayment: string | null
   failedEmails: number
   liveIntegrations: number
+  recentSignIns: number
+  neverSignedIn: number
   planMix: Array<{ plan: string; count: number; kobo: number }>
 }
 
@@ -329,6 +442,11 @@ export function SuperAdminConsole() {
     const latestPayment = successful[0]?.paid_at || successful[0]?.created_at || null
     const failedEmails = emails.filter((item) => item.status !== 'sent' && item.status !== 'delivered').length
     const liveIntegrations = [data?.integrations.payments, data?.integrations.email].filter(Boolean).length
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+    const recentSignIns = accounts.filter(
+      (account) => account.lastSignInAt && new Date(account.lastSignInAt).getTime() >= weekAgo,
+    ).length
+    const neverSignedIn = accounts.filter((account) => !account.lastSignInAt).length
     const mix = new Map<string, { plan: string; count: number; kobo: number }>()
     for (const payment of successful) {
       const entry = mix.get(payment.plan_id) ?? { plan: payment.plan_id, count: 0, kobo: 0 }
@@ -350,12 +468,18 @@ export function SuperAdminConsole() {
       latestPayment,
       failedEmails,
       liveIntegrations,
+      recentSignIns,
+      neverSignedIn,
       planMix: [...mix.values()].sort((a, b) => b.kobo - a.kobo),
     }
   }, [data])
 
   const integrations = data?.integrations
   const waiting = feed.status === 'loading' && !data
+  const reportFiles = data?.evaluationReports
+  const paystackModeLabel =
+    data?.paystackMode === 'live' ? 'Live keys' : data?.paystackMode === 'test' ? 'Test keys' : 'Not configured'
+  const reportFilesLabel = reportFiles == null ? 'Bucket unavailable' : reportFiles.toLocaleString()
 
   function renderSection() {
     if (active.id === 'overview') {
@@ -364,56 +488,52 @@ export function SuperAdminConsole() {
       return (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {[
-              {
-                label: 'Accounts on platform',
-                value: derived.accounts.length.toLocaleString(),
-                sub: `${derived.learners} learners · ${derived.teachers} teachers`,
-                icon: Users,
-                good: false,
-              },
-              {
-                label: 'Revenue settled',
-                value: naira(derived.settled, true),
-                sub: `${derived.successful.length} successful payment${derived.successful.length === 1 ? '' : 's'}`,
-                icon: Receipt,
-                good: derived.settled > 0,
-              },
-              {
-                label: 'Administrator seats',
-                value: derived.admins.length.toLocaleString(),
-                sub: 'Owner-level access',
-                icon: ShieldCheck,
-                good: false,
-              },
-              {
-                label: 'Active this week',
-                value: data.progress.activeThisWeek.toLocaleString(),
-                sub: `of ${data.progress.tracked} with saved progress`,
-                icon: BarChart3,
-                good: data.progress.activeThisWeek > 0,
-              },
-            ].map((stat) => (
-              <div key={stat.label} className="rounded-2xl border border-[#e3e6f0] bg-white p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.05em] text-slate-500">{stat.label}</p>
-                  <stat.icon size={14} className="text-[#1d4ed8]" />
-                </div>
-                <p className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">{stat.value}</p>
-                <p className={cn('mt-0.5 text-[10px] font-semibold', stat.good ? 'text-emerald-600' : 'text-slate-500')}>{stat.sub}</p>
-              </div>
-            ))}
+            <StatCard
+              label="Accounts on platform"
+              value={derived.accounts.length.toLocaleString()}
+              sub={`${derived.learners} learners · ${derived.teachers} teachers`}
+              icon={Users}
+            />
+            <StatCard
+              label="Revenue settled"
+              value={naira(derived.settled, true)}
+              sub={`${derived.successful.length} successful payment${derived.successful.length === 1 ? '' : 's'}`}
+              icon={Receipt}
+              tone="emerald"
+            />
+            <StatCard
+              label="Administrator seats"
+              value={derived.admins.length.toLocaleString()}
+              sub="Owner-level access"
+              icon={ShieldCheck}
+              tone="violet"
+            />
+            <StatCard
+              label="Active this week"
+              value={data.progress.activeThisWeek.toLocaleString()}
+              sub={`of ${data.progress.tracked} with saved progress`}
+              icon={Activity}
+              tone="amber"
+            />
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-            <Panel title="Recent payments" badge={derived.payments.length ? `${derived.payments.length} in ledger` : 'ledger empty'}>
+          <div className="grid gap-3 lg:grid-cols-[1.45fr_1fr]">
+            <Panel
+              title="Recent payments"
+              icon={CreditCard}
+              badge={derived.payments.length ? `${derived.payments.length} in ledger` : 'ledger empty'}
+            >
               {derived.payments.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[460px] text-left">
                     <thead>
                       <tr className="border-b border-[#eef0f6]">
                         {['Date', 'Account', 'Plan', 'Amount', 'Status'].map((heading) => (
-                          <th key={heading} scope="col" className="px-1 py-1.5 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                          <th
+                            key={heading}
+                            scope="col"
+                            className="px-1.5 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400"
+                          >
                             {heading}
                           </th>
                         ))}
@@ -421,26 +541,26 @@ export function SuperAdminConsole() {
                     </thead>
                     <tbody>
                       {derived.payments.slice(0, 6).map((payment) => (
-                        <tr key={payment.id} className="border-b border-[#eef0f6] last:border-0">
-                          <td className="px-1 py-2 text-[10px] text-slate-500">{formatDate(payment.paid_at || payment.created_at)}</td>
-                          <td className="max-w-[140px] truncate px-1 py-2 text-[11px] font-semibold text-slate-800">
-                            {derived.names.get(payment.user_id) ?? 'Unknown account'}
+                        <tr key={payment.id} className="border-b border-[#f1f3f9] transition last:border-0 hover:bg-[#f8f9fe]">
+                          <td className="whitespace-nowrap px-1.5 py-2.5 text-[11px] text-slate-500">
+                            {formatDate(payment.paid_at || payment.created_at)}
                           </td>
-                          <td className="px-1 py-2 text-[10px] text-slate-600">
+                          <td className="max-w-[150px] px-1.5 py-2.5">
+                            <span className="flex items-center gap-2">
+                              <Avatar name={derived.names.get(payment.user_id) ?? '?'} />
+                              <span className="truncate text-[12px] font-semibold text-slate-800">
+                                {derived.names.get(payment.user_id) ?? 'Unknown account'}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="px-1.5 py-2.5 text-[11px] text-slate-600">
                             {PLAN_LABEL[payment.plan_id] ?? payment.plan_id} · {childName(payment.child_id)}
                           </td>
-                          <td className="whitespace-nowrap px-1 py-2 text-[11px] font-bold text-slate-800">
+                          <td className="whitespace-nowrap px-1.5 py-2.5 text-[12px] font-bold text-slate-900">
                             {naira((Number(payment.amount) || 0) / 100)}
                           </td>
-                          <td className="px-1 py-2">
-                            <span
-                              className={cn(
-                                'rounded-full border px-2 py-0.5 text-[9px] font-bold',
-                                chipTone(payment.status === 'success' ? 'ok' : 'warn'),
-                              )}
-                            >
-                              {payment.status}
-                            </span>
+                          <td className="px-1.5 py-2.5">
+                            <Chip tone={payment.status === 'success' ? 'ok' : 'warn'}>{payment.status}</Chip>
                           </td>
                         </tr>
                       ))}
@@ -451,7 +571,7 @@ export function SuperAdminConsole() {
                 <EmptyNote>No charges have been recorded yet. Successful Paystack checkouts will appear here automatically.</EmptyNote>
               )}
             </Panel>
-            <Panel title="Integration status">
+            <Panel title="Integration status" icon={Activity}>
               <Row
                 label="Supabase database"
                 value={integrations?.database ? 'Connected' : 'Unavailable'}
@@ -471,18 +591,24 @@ export function SuperAdminConsole() {
             </Panel>
           </div>
 
-          <Panel title="Newest accounts" badge={`${derived.accounts.length} total`}>
+          <Panel title="Newest accounts" icon={Users} badge={`${derived.accounts.length} total`}>
             {derived.accounts.length ? (
               <ul className="grid gap-2 sm:grid-cols-2">
                 {derived.accounts.slice(0, 4).map((account) => (
-                  <li key={account.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-[11px] font-bold text-slate-800">{account.name || account.email}</p>
-                      <p className="truncate text-[10px] text-slate-500">{account.email || 'No email on file'}</p>
-                    </div>
-                    <span className="shrink-0 rounded-full border border-[#e3e6f0] bg-[#fafbfe] px-2 py-0.5 text-[9px] font-bold text-slate-600">
-                      {ROLE_LABEL[account.role] ?? account.role}
+                  <li
+                    key={account.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5 transition hover:border-[#dfe4f3] hover:bg-[#f8f9fe]"
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <Avatar name={account.name || account.email || '?'} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] font-semibold text-slate-800">
+                          {account.name || account.email}
+                        </span>
+                        <span className="block truncate text-[11px] text-slate-500">{account.email || 'No email on file'}</span>
+                      </span>
                     </span>
+                    <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>{ROLE_LABEL[account.role] ?? account.role}</Chip>
                   </li>
                 ))}
               </ul>
@@ -501,21 +627,22 @@ export function SuperAdminConsole() {
         <div className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
             {(['admin', 'teacher', 'parent', 'junior', 'senior', 'special'] as const).map((role) => (
-              <span
-                key={role}
-                className={cn('rounded-full border px-2.5 py-1 text-[10px] font-bold', role === 'admin' ? chipTone('info') : chipTone('neutral'))}
-              >
+              <Chip key={role} tone={role === 'admin' ? 'info' : 'neutral'}>
                 {ROLE_LABEL[role]} · {derived.countRole(role)}
-              </span>
+              </Chip>
             ))}
           </div>
-          <div className="overflow-hidden rounded-2xl border border-[#e3e6f0] bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left">
+          <Panel title="All platform accounts" icon={Users} badge={`${derived.accounts.length} accounts`}>
+            <div className="-mx-4 overflow-x-auto sm:-mx-5">
+              <table className="w-full min-w-[680px] text-left">
                 <thead>
-                  <tr className="border-b border-[#eef0f6] bg-[#fafbfe]">
+                  <tr className="border-b border-[#eef0f6]">
                     {['Account', 'Role', 'Joined', 'Last sign-in'].map((heading) => (
-                      <th key={heading} scope="col" className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                      <th
+                        key={heading}
+                        scope="col"
+                        className="px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 sm:px-5"
+                      >
                         {heading}
                       </th>
                     ))}
@@ -523,23 +650,25 @@ export function SuperAdminConsole() {
                 </thead>
                 <tbody>
                   {derived.accounts.map((account) => (
-                    <tr key={account.id} className="border-b border-[#eef0f6] last:border-0">
-                      <td className="px-4 py-3">
-                        <p className="text-[11px] font-bold text-slate-800">{account.name || 'Unnamed account'}</p>
-                        <p className="text-[10px] text-slate-500">{account.email || 'No email'}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={cn(
-                            'rounded-full border px-2 py-0.5 text-[9px] font-bold',
-                            account.role === 'admin' ? chipTone('info') : chipTone('neutral'),
-                          )}
-                        >
-                          {ROLE_LABEL[account.role] ?? account.role}
+                    <tr key={account.id} className="border-b border-[#f1f3f9] transition last:border-0 hover:bg-[#f8f9fe]">
+                      <td className="px-4 py-3 sm:px-5">
+                        <span className="flex items-center gap-2.5">
+                          <Avatar name={account.name || account.email || '?'} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-[12px] font-semibold text-slate-800">
+                              {account.name || 'Unnamed account'}
+                            </span>
+                            <span className="block truncate text-[11px] text-slate-500">{account.email || 'No email'}</span>
+                          </span>
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-[11px] text-slate-600">{formatDate(account.joinedAt)}</td>
-                      <td className="px-4 py-3 text-[11px] text-slate-600">
+                      <td className="px-4 py-3 sm:px-5">
+                        <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>
+                          {ROLE_LABEL[account.role] ?? account.role}
+                        </Chip>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[11px] text-slate-600 sm:px-5">{formatDate(account.joinedAt)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[11px] text-slate-600 sm:px-5">
                         {account.lastSignInAt ? formatDateTime(account.lastSignInAt) : 'Never signed in'}
                       </td>
                     </tr>
@@ -547,26 +676,84 @@ export function SuperAdminConsole() {
                 </tbody>
               </table>
             </div>
-            {!derived.accounts.length ? <p className="p-4 text-[11px] text-slate-500">No accounts yet.</p> : null}
-          </div>
+            {!derived.accounts.length ? <p className="pt-3 text-[12px] text-slate-500">No accounts yet.</p> : null}
+          </Panel>
         </div>
       )
     }
 
     if (active.id === 'safeguarding') {
+      if (waiting) return <LoadingBlock label="Loading safeguarding figures…" />
+      if (!data) return null
       return (
-        <Panel title="Incident queue">
-          <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-[#dfe3ef] bg-[#fafbfe] p-3">
-            <LifeBuoy size={15} className="mt-0.5 shrink-0 text-slate-400" />
-            <div>
-              <p className="text-[11px] font-bold text-slate-700">No incident log is connected yet</p>
-              <p className="mt-0.5 max-w-2xl text-[10px] leading-relaxed text-slate-500">
-                The platform has no safeguarding table, so this queue is intentionally empty rather than filled with sample
-                incidents. Once an incident register is added, flagged cases will be reviewed here.
-              </p>
-            </div>
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard
+              label="Learners on platform"
+              value={derived.learners.toLocaleString()}
+              sub="Junior, senior and special-needs"
+              icon={Users}
+            />
+            <StatCard
+              label="Parents / guardians"
+              value={derived.countRole('parent').toLocaleString()}
+              sub="Guardian accounts on file"
+              icon={ShieldCheck}
+              tone="violet"
+            />
+            <StatCard
+              label="Evaluation reports on file"
+              value={reportFilesLabel}
+              sub={reportFiles == null ? 'Private bucket could not be listed' : 'Stored in the private report bucket'}
+              icon={FileText}
+              tone="emerald"
+            />
           </div>
-        </Panel>
+
+          <Panel title="Incident queue" icon={LifeBuoy}>
+            <div className="flex items-start gap-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-400">
+                <LifeBuoy size={15} />
+              </span>
+              <div>
+                <p className="text-[12px] font-bold text-slate-700">No incident log is connected yet</p>
+                <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-500">
+                  The platform has no safeguarding table, so this queue is intentionally empty rather than filled with sample
+                  incidents. Once an incident register is added, flagged cases will be reviewed here.
+                </p>
+              </div>
+            </div>
+          </Panel>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel title="Protections in force" icon={ShieldCheck}>
+              <Row label="Role fixed at sign-up" note="Accounts cannot self-select administrator access" value="On" tone="ok" />
+              <Row
+                label="Guardian sign-off gate"
+                note="Review mode until a verification sender is wired"
+                value="Review mode"
+                tone="warn"
+              />
+              <Row label="Per-role dashboards" note="Each role only sees its own workspace" value="On" tone="ok" />
+              <Row label="Evaluation reports" note="Read from a private storage bucket" value="Private" tone="ok" />
+              <Row label="Console access" note="Verified by the server on every request" value="Server-checked" tone="ok" />
+            </Panel>
+            <Panel title="What the register will hold" icon={FileText}>
+              <DotList
+                items={[
+                  { title: 'Date raised and reporter', detail: 'Who logged the case and when it was opened.' },
+                  { title: 'Learner reference', detail: 'Linked by account reference, never names inside summaries.' },
+                  { title: 'Class or session', detail: 'The live class, chat thread or shared item involved.' },
+                  { title: 'Category and severity', detail: 'So cases can be triaged and escalated consistently.' },
+                  { title: 'Action taken and owner', detail: 'The decision, the person responsible and the follow-up date.' },
+                ]}
+              />
+              <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+                Nothing is stored in this queue today — these are the fields the register is scoped to hold once it ships.
+              </p>
+            </Panel>
+          </div>
+        </div>
       )
     }
 
@@ -574,24 +761,34 @@ export function SuperAdminConsole() {
       if (waiting) return <LoadingBlock label="Loading stored records…" />
       if (!data) return null
       return (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Panel title="Controls in force">
-            <Row label="Row-level security" value="On · every table" tone="ok" />
-            <Row label="Console access" value="Server-verified role" tone="ok" />
-            <Row label="Service role key" value="Server-side only" tone="ok" />
-            <Row label="Evaluation reports" value="Private bucket" tone="ok" />
-            <Row label="Payment ledger writes" value="Server-side only" tone="ok" />
-            <Row
-              label="Email delivery"
-              value={integrations?.email ? 'Connected' : 'Mailgun setup needed'}
-              tone={integrations?.email ? 'ok' : 'warn'}
-            />
-          </Panel>
-          <Panel title="Stored records">
-            <Row label="Accounts" value={derived.accounts.length.toLocaleString()} />
-            <Row label="Saved progress records" value={data.progress.tracked.toLocaleString()} />
-            <Row label="Payment records" value={derived.payments.length.toLocaleString()} />
-            <Row label="Email log records" value={derived.emails.length.toLocaleString()} />
+        <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel title="Controls in force" icon={Lock}>
+              <Row label="Row-level security" value="On · every table" tone="ok" />
+              <Row label="Console access" value="Server-verified role" tone="ok" />
+              <Row label="Service role key" value="Server-side only" tone="ok" />
+              <Row label="Evaluation reports" value="Private bucket" tone="ok" />
+              <Row label="Payment ledger writes" value="Server-side only" tone="ok" />
+              <Row
+                label="Email delivery"
+                value={integrations?.email ? 'Connected' : 'Mailgun setup needed'}
+                tone={integrations?.email ? 'ok' : 'warn'}
+              />
+            </Panel>
+            <Panel title="Stored records" icon={Database}>
+              <Row label="Accounts" value={derived.accounts.length.toLocaleString()} />
+              <Row label="Saved progress records" value={data.progress.tracked.toLocaleString()} />
+              <Row label="Payment records" value={derived.payments.length.toLocaleString()} />
+              <Row label="Email log records" value={derived.emails.length.toLocaleString()} />
+              <Row label="Evaluation report files" value={reportFilesLabel} />
+            </Panel>
+          </div>
+          <Panel title="How data is handled" icon={KeyRound}>
+            <Row label="Card details" value="Handled by Paystack" />
+            <Row label="Passwords" value="Hashed by Supabase auth" />
+            <Row label="Service keys" value="Server-side environment only" />
+            <Row label="Evaluation reports" value="Private bucket" />
+            <Row label="Account deletion" value="Cascades to progress & payments" />
           </Panel>
         </div>
       )
@@ -601,56 +798,69 @@ export function SuperAdminConsole() {
       if (waiting) return <LoadingBlock label="Loading platform status…" />
       if (!data) return null
       return (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Panel title="Configuration & health">
-            <Row
-              label="Supabase database"
-              value={integrations?.database ? 'Connected' : 'Unavailable'}
-              tone={integrations?.database ? 'ok' : 'warn'}
-            />
-            <Row
-              label="Paystack payments"
-              value={integrations?.payments ? 'Connected' : 'Not configured'}
-              tone={integrations?.payments ? 'ok' : 'warn'}
-            />
-            <Row
-              label="Mailgun email"
-              value={integrations?.email ? 'Connected' : 'Setup needed'}
-              tone={integrations?.email ? 'ok' : 'warn'}
-            />
-            <Row label="Accounts active this week" value={`${data.progress.activeThisWeek} of ${data.progress.tracked}`} />
-            <Row label="Latest payment" value={derived.latestPayment ? formatDateTime(derived.latestPayment) : 'None yet'} />
-            <Row label="Data refreshed" value={formatDateTime(data.generatedAt)} />
-          </Panel>
-          <Panel title="Email delivery log" badge={`${derived.emails.length} logged`}>
-            {derived.emails.length ? (
-              <ul className="space-y-2">
-                {derived.emails.slice(0, 8).map((item) => (
-                  <li key={item.id} className="flex items-start justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-[11px] font-bold text-slate-800">{item.recipient}</p>
-                      <p className="text-[10px] text-slate-500">
-                        {item.kind} · {formatDateTime(item.created_at)}
-                      </p>
-                    </div>
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold',
-                        chipTone(item.status === 'sent' || item.status === 'delivered' ? 'ok' : 'warn'),
-                      )}
+        <div className="space-y-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel title="Configuration & health" icon={Settings}>
+              <Row
+                label="Supabase database"
+                value={integrations?.database ? 'Connected' : 'Unavailable'}
+                tone={integrations?.database ? 'ok' : 'warn'}
+              />
+              <Row
+                label="Paystack payments"
+                value={integrations?.payments ? 'Connected' : 'Not configured'}
+                tone={integrations?.payments ? 'ok' : 'warn'}
+              />
+              <Row
+                label="Paystack mode"
+                value={data.paystackMode === 'live' ? 'Live keys' : data.paystackMode === 'test' ? 'Test keys' : 'Not configured'}
+                tone={data.paystackMode === 'live' ? 'ok' : data.paystackMode === 'test' ? 'info' : 'warn'}
+              />
+              <Row
+                label="Mailgun email"
+                value={integrations?.email ? 'Connected' : 'Setup needed'}
+                tone={integrations?.email ? 'ok' : 'warn'}
+              />
+              <Row label="Accounts active this week" value={`${data.progress.activeThisWeek} of ${data.progress.tracked}`} />
+              <Row label="Latest payment" value={derived.latestPayment ? formatDateTime(derived.latestPayment) : 'None yet'} />
+              <Row label="Data refreshed" value={formatDateTime(data.generatedAt)} />
+            </Panel>
+            <Panel title="Email delivery log" icon={Mail} badge={`${derived.emails.length} logged`}>
+              {derived.emails.length ? (
+                <ul className="space-y-2">
+                  {derived.emails.slice(0, 8).map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5 transition hover:bg-[#f8f9fe]"
                     >
-                      {item.status}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyNote>
-                {integrations?.email
-                  ? 'No email has been logged yet. Plan, booking and support emails will appear here once sent.'
-                  : 'Mailgun is not configured, so no email has been sent or logged. Add the Mailgun key and domain to turn delivery on.'}
-              </EmptyNote>
-            )}
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12px] font-semibold text-slate-800">{item.recipient}</span>
+                        <span className="block text-[10px] text-slate-500">
+                          {item.kind} · {formatDateTime(item.created_at)}
+                        </span>
+                      </span>
+                      <Chip tone={item.status === 'sent' || item.status === 'delivered' ? 'ok' : 'warn'}>{item.status}</Chip>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyNote>
+                  {integrations?.email
+                    ? 'No email has been logged yet. Plan, booking and support emails will appear here once sent.'
+                    : 'Mailgun is not configured, so no email has been sent or logged. Add the Mailgun key and domain to turn delivery on.'}
+                </EmptyNote>
+              )}
+            </Panel>
+          </div>
+          <Panel title="Data stores" icon={Database}>
+            <div className="grid gap-x-8 sm:grid-cols-2">
+              <Row label="Accounts" value={derived.accounts.length.toLocaleString()} />
+              <Row label="Saved progress records" value={data.progress.tracked.toLocaleString()} />
+              <Row label="Payment records" value={derived.payments.length.toLocaleString()} />
+              <Row label="Email log records" value={derived.emails.length.toLocaleString()} />
+              <Row label="Evaluation report files" value={reportFilesLabel} />
+              <Row label="Active this week" value={data.progress.activeThisWeek.toLocaleString()} />
+            </div>
           </Panel>
         </div>
       )
@@ -659,92 +869,221 @@ export function SuperAdminConsole() {
     if (active.id === 'admins') {
       if (waiting) return <LoadingBlock label="Loading administrator accounts…" />
       if (!data) return null
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+      const adminsRecent = derived.admins.filter(
+        (admin) => admin.lastSignInAt && new Date(admin.lastSignInAt).getTime() >= weekAgo,
+      ).length
+      const adminsNever = derived.admins.filter((admin) => !admin.lastSignInAt).length
       return (
-        <Panel title="Administrator seats" badge={`${derived.admins.length} held`}>
-          {derived.admins.length ? (
-            <ul className="space-y-2">
-              {derived.admins.map((admin) => (
-                <li key={admin.id} className="flex items-start justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-[11px] font-bold text-slate-800">{admin.name || admin.email}</p>
-                    <p className="truncate text-[10px] text-slate-500">{admin.email}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className={cn('rounded-full border px-2 py-0.5 text-[9px] font-bold', chipTone('info'))}>Administrator</span>
-                    <p className="mt-1 text-[9px] text-slate-400">
-                      {admin.lastSignInAt ? `Last in ${formatDate(admin.lastSignInAt)}` : 'Never signed in'}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyNote>No administrator accounts found.</EmptyNote>
-          )}
-        </Panel>
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatCard
+              label="Administrator seats"
+              value={derived.admins.length.toLocaleString()}
+              sub="Held by owner-level accounts"
+              icon={ShieldCheck}
+              tone="violet"
+            />
+            <StatCard
+              label="Signed in past 7 days"
+              value={adminsRecent.toLocaleString()}
+              sub="From the auth service"
+              icon={UserCheck}
+              tone="emerald"
+            />
+            <StatCard
+              label="Never signed in"
+              value={adminsNever.toLocaleString()}
+              sub="Seats created but unused"
+              icon={Activity}
+              tone="amber"
+            />
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+            <Panel title="Administrator seats" icon={Users} badge={`${derived.admins.length} held`}>
+              {derived.admins.length ? (
+                <ul className="space-y-2">
+                  {derived.admins.map((admin) => (
+                    <li
+                      key={admin.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5 transition hover:border-[#dfe4f3] hover:bg-[#f8f9fe]"
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <Avatar name={admin.name || admin.email || '?'} tone="info" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-[12px] font-semibold text-slate-800">
+                            {admin.name || admin.email}
+                          </span>
+                          <span className="block truncate text-[11px] text-slate-500">{admin.email}</span>
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <Chip tone="info">Administrator</Chip>
+                        <span className="mt-1 block text-[10px] text-slate-400">
+                          {admin.lastSignInAt ? `Last in ${formatDate(admin.lastSignInAt)}` : 'Never signed in'}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyNote>No administrator accounts found.</EmptyNote>
+              )}
+            </Panel>
+            <Panel title="Administrator capabilities" icon={KeyRound}>
+              <Row label="Promote or remove administrators" value="Owner seat" tone="info" />
+              <Row label="Read every account" value="Allowed" tone="ok" />
+              <Row label="Payments ledger" value="Read-only" />
+              <Row label="Email delivery log" value="Read-only" />
+              <Row label="Evaluation reports" value="Private bucket" />
+              <Row label="Admin Manager workspace" value="Separate console" />
+            </Panel>
+          </div>
+        </div>
       )
     }
 
     if (active.id === 'vendors') {
+      if (waiting) return <LoadingBlock label="Loading vendor status…" />
+      if (!data) return null
+      const cards = [
+        {
+          name: 'Supabase',
+          use: 'Database, accounts & private storage',
+          icon: Database,
+          ok: Boolean(integrations?.database),
+          okText: 'Connected',
+          badText: 'Unavailable',
+        },
+        {
+          name: 'Vercel',
+          use: 'Hosting & serverless API',
+          icon: Cloud,
+          ok: true,
+          okText: 'Serving this console',
+          badText: '',
+        },
+        {
+          name: 'Paystack',
+          use: 'Payments & subscriptions',
+          icon: CreditCard,
+          ok: Boolean(integrations?.payments),
+          okText: 'Connected',
+          badText: 'Not configured',
+        },
+        {
+          name: 'Mailgun',
+          use: 'Transactional email',
+          icon: Mail,
+          ok: Boolean(integrations?.email),
+          okText: 'Connected',
+          badText: 'Setup needed',
+        },
+      ]
       return (
-        <Panel title="Active services">
-          <div className="space-y-2">
-            {[
-              { name: 'Supabase', use: 'Database, accounts & storage', ok: Boolean(integrations?.database), okText: 'Connected', badText: 'Unavailable' },
-              { name: 'Vercel', use: 'Hosting & serverless API', ok: true, okText: 'Serving this console', badText: '' },
-              { name: 'Paystack', use: 'Payments & subscriptions', ok: Boolean(integrations?.payments), okText: 'Connected', badText: 'Not configured' },
-              { name: 'Mailgun', use: 'Transactional email', ok: Boolean(integrations?.email), okText: 'Connected', badText: 'Setup needed' },
-            ].map((vendor) => (
-              <div key={vendor.name} className="flex items-center justify-between gap-3 rounded-xl border border-[#eef0f6] p-2.5">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-800">{vendor.name}</p>
-                  <p className="text-[10px] text-slate-500">{vendor.use}</p>
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {cards.map((vendor) => (
+              <div
+                key={vendor.name}
+                className="rounded-2xl border border-[#e6e8f2] bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:-translate-y-0.5 hover:border-[#d8ddf1] hover:shadow-[0_14px_30px_-22px_rgba(30,41,90,0.45)]"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f2f4fb] text-[#4f46e5]">
+                    <vendor.icon size={17} />
+                  </span>
+                  <Chip tone={vendor.ok ? 'ok' : 'warn'}>{vendor.ok ? vendor.okText : vendor.badText}</Chip>
                 </div>
-                <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold', chipTone(vendor.ok ? 'ok' : 'warn'))}>
-                  {vendor.ok ? vendor.okText : vendor.badText}
-                </span>
+                <p className="mt-3 text-[13px] font-bold text-slate-900">{vendor.name}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{vendor.use}</p>
               </div>
             ))}
           </div>
-        </Panel>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Panel title="Credentials held server-side" icon={KeyRound}>
+              <Row
+                label="Paystack secret key"
+                note="Used only by the serverless payment endpoints"
+                value={integrations?.payments ? 'Configured' : 'Missing'}
+                tone={integrations?.payments ? 'ok' : 'warn'}
+              />
+              <Row label="Supabase service role" note="Never sent to the browser" value="Server-side only" tone="ok" />
+              <Row
+                label="Mailgun key and domain"
+                note="Required before real email can be sent"
+                value={integrations?.email ? 'Configured' : 'Missing'}
+                tone={integrations?.email ? 'ok' : 'warn'}
+              />
+            </Panel>
+            <Panel title="Environment & licensing" icon={Settings}>
+              <Row label="Hosting" value="Vercel" />
+              <Row label="API runtime" value="Serverless functions" />
+              <Row label="Database" value="Supabase Postgres" />
+              <Row label="Payments mode" value={paystackModeLabel} tone={data.paystackMode ? 'ok' : 'warn'} />
+              <Row label="Email delivery" value={integrations?.email ? 'Mailgun configured' : 'Not configured'} />
+              <Row label="Licence records" value="Not stored on this platform" />
+            </Panel>
+          </div>
+        </div>
       )
     }
 
     if (waiting) return <LoadingBlock label="Loading reports…" />
     if (!data) return null
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+    const adminsRecent = derived.admins.filter(
+      (admin) => admin.lastSignInAt && new Date(admin.lastSignInAt).getTime() >= weekAgo,
+    ).length
     return (
-      <div>
+      <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {[
-            { value: derived.accounts.length.toLocaleString(), label: 'Accounts onboarded' },
-            {
-              value: `${derived.successful.length}`,
-              label: `Payments settled${derived.settled > 0 ? ` · ${naira(derived.settled, true)}` : ''}`,
-            },
-            { value: data.progress.activeThisWeek.toLocaleString(), label: 'Active in the last 7 days' },
-            { value: derived.emails.length.toLocaleString(), label: 'Emails logged' },
-            { value: `${derived.admins.length}`, label: 'Administrator seats' },
-          ].map((kpi) => (
-            <div key={kpi.label} className="rounded-2xl border border-[#e3e6f0] bg-white p-4">
-              <p className="text-lg font-extrabold tracking-tight text-slate-900">{kpi.value}</p>
-              <p className="mt-1 text-[10px] leading-snug text-slate-500">{kpi.label}</p>
-            </div>
-          ))}
+          <StatCard label="Accounts onboarded" value={derived.accounts.length.toLocaleString()} sub="All roles" icon={Users} />
+          <StatCard
+            label="Payments settled"
+            value={derived.successful.length.toLocaleString()}
+            sub={derived.settled > 0 ? naira(derived.settled, true) : 'None settled yet'}
+            icon={Receipt}
+            tone="emerald"
+          />
+          <StatCard
+            label="Active in the last 7 days"
+            value={data.progress.activeThisWeek.toLocaleString()}
+            sub="Saved progress activity"
+            icon={Activity}
+            tone="amber"
+          />
+          <StatCard
+            label="Emails logged"
+            value={derived.emails.length.toLocaleString()}
+            sub="Delivery attempts recorded"
+            icon={Mail}
+          />
+          <StatCard
+            label="Administrator seats"
+            value={derived.admins.length.toLocaleString()}
+            sub="Owner-level access"
+            icon={ShieldCheck}
+            tone="violet"
+          />
         </div>
+
         {derived.failedEmails > 0 ? (
-          <p className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-amber-600">
-            <Mail size={11} /> {derived.failedEmails} email record{derived.failedEmails === 1 ? '' : 's'} did not report a
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600">
+            <Mail size={12} /> {derived.failedEmails} email record{derived.failedEmails === 1 ? '' : 's'} did not report a
             successful send.
           </p>
         ) : null}
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <Panel title="Accounts by role">
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Panel title="Accounts by role" icon={Users}>
             {(['admin', 'teacher', 'parent', 'junior', 'senior', 'special'] as const).map((role) => (
               <Row key={role} label={ROLE_LABEL[role]} value={derived.countRole(role).toLocaleString()} />
             ))}
             <Row label="Total accounts" value={derived.accounts.length.toLocaleString()} />
           </Panel>
-          <Panel title="Plan mix" badge={`${derived.successful.length} settled`}>
+          <Panel title="Plan mix" icon={CreditCard} badge={`${derived.successful.length} settled`}>
             {derived.planMix.length ? (
               derived.planMix.map((entry) => (
                 <Row
@@ -758,25 +1097,44 @@ export function SuperAdminConsole() {
             )}
           </Panel>
         </div>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Panel title="Sign-in activity" icon={UserCheck}>
+            <Row label="Signed in past 7 days" value={derived.recentSignIns.toLocaleString()} />
+            <Row label="Never signed in" value={derived.neverSignedIn.toLocaleString()} />
+            <Row label="Administrators signed in this week" value={adminsRecent.toLocaleString()} />
+            <Row label="Accounts with saved progress" value={data.progress.tracked.toLocaleString()} />
+          </Panel>
+          <Panel title="Platform totals" icon={Database}>
+            <Row label="Payment records" value={derived.payments.length.toLocaleString()} />
+            <Row label="Email log records" value={derived.emails.length.toLocaleString()} />
+            <Row label="Evaluation report files" value={reportFilesLabel} />
+            <Row label="Report generated" value={formatDateTime(data.generatedAt)} />
+          </Panel>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-dvh bg-[#f4f5fb] text-slate-900">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col bg-[#171238] px-4 py-6 text-white lg:flex">
-        <Link to="/super-admin" className="flex items-center gap-2.5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/10" aria-hidden>
+    <div className="min-h-dvh bg-[#f6f7fc] text-slate-900">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-hidden border-r border-white/5 bg-[#141130] px-4 py-6 text-white lg:flex">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_18%_-12%,rgba(99,102,241,0.5),transparent_62%)]"
+        />
+        <Link to="/super-admin" className="relative flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] shadow-[0_10px_24px_-10px_rgba(99,102,241,0.95)]">
             <Crown size={18} />
           </span>
           <span>
-            <span className="block text-base font-extrabold tracking-tight">NeuroBloom</span>
-            <span className="block text-[9px] font-semibold tracking-[0.18em] text-white/50">SUPER ADMIN</span>
+            <span className="block text-[15px] font-extrabold tracking-tight">NeuroBloom</span>
+            <span className="block text-[9px] font-bold tracking-[0.2em] text-white/45">SUPER ADMIN</span>
           </span>
         </Link>
 
-        <div className="mt-6 flex items-center gap-2.5 rounded-2xl bg-white/[0.06] p-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1d4ed8] text-xs font-bold text-white">
+        <div className="relative mt-6 flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-xs font-bold text-white">
             {initials(name)}
           </span>
           <div className="min-w-0">
@@ -785,7 +1143,7 @@ export function SuperAdminConsole() {
           </div>
         </div>
 
-        <nav aria-label="Super Admin sections" className="mt-5 min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+        <nav aria-label="Super Admin sections" className="relative mt-5 min-h-0 flex-1 space-y-0.5 overflow-y-auto">
           {SECTIONS.map((item) => (
             <NavLink
               key={item.id}
@@ -793,20 +1151,26 @@ export function SuperAdminConsole() {
               end
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] transition',
+                  'group flex items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] transition',
                   isActive
-                    ? 'bg-white/10 font-semibold text-white'
-                    : 'font-medium text-white/70 hover:bg-white/10 hover:text-white',
+                    ? 'bg-white/[0.1] font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.07)]'
+                    : 'font-medium text-white/65 hover:bg-white/[0.06] hover:text-white',
                 )
               }
             >
-              <item.icon size={15} /> {item.label}
+              {({ isActive }) => (
+                <>
+                  <item.icon size={15} className={cn('shrink-0', isActive ? 'text-[#c7d2fe]' : 'text-white/45')} />
+                  {item.label}
+                  {isActive ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#a5b4fc]" aria-hidden /> : null}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
-          <div className="rounded-xl bg-white/[0.06] p-3">
+        <div className="relative mt-3 space-y-2 border-t border-white/10 pt-3">
+          <div className="rounded-xl border border-white/10 bg-white/[0.05] p-3">
             <div className="flex items-center gap-1.5 text-white">
               <ShieldCheck size={13} className={integrations?.database ? 'text-emerald-300' : 'text-white/40'} />
               <span className="text-[10px] font-bold">
@@ -830,18 +1194,20 @@ export function SuperAdminConsole() {
         </div>
       </aside>
 
-      <div className="lg:pl-60">
-        <header className="sticky top-0 z-30 border-b border-[#e3e6f0] bg-[#f4f5fb]/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <div>
-              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#1d4ed8]">
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-30 border-b border-[#e6e8f2] bg-[#f6f7fc]/85 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[#4f46e5]">
                 <Crown size={11} /> Exclusive access
+                <span className="text-slate-300">/</span>
+                <span className="text-slate-400">{active.label}</span>
               </p>
-              <h1 className="text-lg font-extrabold tracking-tight text-slate-900">{active.label}</h1>
-              <p className="text-[11px] text-slate-500">{active.blurb}</p>
+              <h1 className="mt-0.5 text-[22px] font-extrabold tracking-tight text-slate-900">{active.label}</h1>
+              <p className="text-[12px] text-slate-500">{active.blurb}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="hidden items-center gap-1.5 rounded-full border border-[#e3e6f0] bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 sm:inline-flex">
+              <span className="hidden items-center gap-1.5 rounded-full border border-[#e6e8f2] bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-[0_1px_2px_rgba(16,24,40,0.04)] sm:inline-flex">
                 <span className={cn('h-1.5 w-1.5 rounded-full', feed.status === 'ready' ? 'bg-emerald-500' : 'bg-amber-500')} />
                 Live data · {feed.status === 'ready' && data ? formatTime(data.generatedAt) : 'syncing'}
               </span>
@@ -850,12 +1216,12 @@ export function SuperAdminConsole() {
                 onClick={() => void feed.reload()}
                 disabled={feed.status === 'loading'}
                 aria-label="Refresh live data"
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e3e6f0] bg-white text-slate-500 transition hover:text-slate-900 disabled:opacity-50"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e6e8f2] bg-white text-slate-500 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition hover:text-slate-900 disabled:opacity-50"
               >
                 <RefreshCw size={14} className={feed.status === 'loading' ? 'animate-spin' : undefined} />
               </button>
-              <span className="flex items-center gap-2 rounded-full border border-[#e3e6f0] bg-white py-1 pl-1 pr-3">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1d4ed8] text-[10px] font-bold text-white">
+              <span className="flex items-center gap-2 rounded-full border border-[#e6e8f2] bg-white py-1 pl-1 pr-3 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#8b5cf6] text-[10px] font-bold text-white">
                   {initials(name)}
                 </span>
                 <span className="text-[11px] font-bold text-slate-700">{name}</span>
@@ -871,7 +1237,7 @@ export function SuperAdminConsole() {
                 className={({ isActive }) =>
                   cn(
                     'whitespace-nowrap rounded-full border px-3 py-1.5 text-[10px] font-semibold transition',
-                    isActive ? 'border-[#1d4ed8] bg-[#1d4ed8] text-white' : 'border-[#e3e6f0] bg-white text-slate-600',
+                    isActive ? 'border-[#4f46e5] bg-[#4f46e5] text-white' : 'border-[#e6e8f2] bg-white text-slate-600',
                   )
                 }
               >
@@ -899,11 +1265,11 @@ export function SuperAdminConsole() {
             </div>
           ) : null}
 
-          <p className="mb-4 max-w-3xl text-xs leading-relaxed text-slate-500">{active.copy}</p>
+          <p className="mb-4 max-w-3xl text-[12px] leading-relaxed text-slate-500">{active.copy}</p>
 
           {renderSection()}
 
-          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e6f0] pt-5">
+          <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[#e6e8f2] pt-5">
             <p className="max-w-xl text-[10px] leading-relaxed text-slate-400">
               Every figure on this console is read live from Supabase and the serverless API. This console is separate from
               the Admin Manager workspace used by the operations team.
