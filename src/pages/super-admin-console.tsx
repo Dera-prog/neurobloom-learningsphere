@@ -258,7 +258,12 @@ const CHIP_TONE: Record<Tone, string> = {
 
 function Chip({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: Tone }) {
   return (
-    <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold', CHIP_TONE[tone])}>
+    <span
+      className={cn(
+        'inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+        CHIP_TONE[tone],
+      )}
+    >
       {children}
     </span>
   )
@@ -651,7 +656,7 @@ export function SuperAdminConsole() {
                   <ChevronDown size={12} className={cn('transition', accountsMenuOpen && 'rotate-180')} />
                 </button>
                 {accountsMenuOpen ? (
-                  <div className="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/15 bg-[#1d1843] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
+                  <div className="absolute right-0 top-full z-30 mt-2 w-[26rem] max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/15 bg-[#1d1843] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
                     <p className="border-b border-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white/45">
                       All platform accounts
                     </p>
