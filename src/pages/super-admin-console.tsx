@@ -289,6 +289,7 @@ interface Derived {
   latestPayment: string | null
   failedEmails: number
   liveIntegrations: number
+  planMix: Array<{ plan: string; count: number; kobo: number }>
 }
 
 /* -------------------------------- Console -------------------------------- */
@@ -333,6 +334,13 @@ export function SuperAdminConsole() {
     const latestPayment = successful[0]?.paid_at || successful[0]?.created_at || null
     const failedEmails = emails.filter((item) => item.status !== 'sent' && item.status !== 'delivered').length
     const liveIntegrations = [data?.integrations.payments, data?.integrations.email].filter(Boolean).length
+    const mix = new Map<string, { plan: string; count: number; kobo: number }>()
+    for (const payment of successful) {
+      const entry = mix.get(payment.plan_id) ?? { plan: payment.plan_id, count: 0, kobo: 0 }
+      entry.count += 1
+      entry.kobo += Number(payment.amount) || 0
+      mix.set(payment.plan_id, entry)
+    }
     return {
       accounts,
       payments,
@@ -347,6 +355,7 @@ export function SuperAdminConsole() {
       latestPayment,
       failedEmails,
       liveIntegrations,
+      planMix: [...mix.values()].sort((a, b) => b.kobo - a.kobo),
     }
   }, [data])
 
@@ -733,6 +742,27 @@ export function SuperAdminConsole() {
             successful send.
           </p>
         ) : null}
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <Panel title="Accounts by role">
+            {(['admin', 'teacher', 'parent', 'junior', 'senior', 'special'] as const).map((role) => (
+              <Row key={role} label={ROLE_LABEL[role]} value={derived.countRole(role).toLocaleString()} />
+            ))}
+            <Row label="Total accounts" value={derived.accounts.length.toLocaleString()} />
+          </Panel>
+          <Panel title="Plan mix" badge={`${derived.successful.length} settled`}>
+            {derived.planMix.length ? (
+              derived.planMix.map((entry) => (
+                <Row
+                  key={entry.plan}
+                  label={PLAN_LABEL[entry.plan] ?? entry.plan}
+                  value={`${entry.count} · ${naira(entry.kobo / 100)}`}
+                />
+              ))
+            ) : (
+              <EmptyNote>No settled payments yet, so there is no plan mix to report.</EmptyNote>
+            )}
+          </Panel>
+        </div>
       </div>
     )
   }
