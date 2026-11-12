@@ -19,6 +19,7 @@ import {
   Mail,
   Receipt,
   RefreshCw,
+  Search,
   Settings,
   ShieldCheck,
   UserCheck,
@@ -446,10 +447,12 @@ export function SuperAdminConsole() {
   }, [active.id])
 
   const [accountsMenuOpen, setAccountsMenuOpen] = useState(false)
+  const [accountsQuery, setAccountsQuery] = useState('')
   const accountsMenuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setAccountsMenuOpen(false)
+    setAccountsQuery('')
   }, [active.id])
 
   useEffect(() => {
@@ -457,10 +460,14 @@ export function SuperAdminConsole() {
     const onPointerDown = (event: MouseEvent) => {
       if (accountsMenuRef.current && !accountsMenuRef.current.contains(event.target as Node)) {
         setAccountsMenuOpen(false)
+        setAccountsQuery('')
       }
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setAccountsMenuOpen(false)
+      if (event.key === 'Escape') {
+        setAccountsMenuOpen(false)
+        setAccountsQuery('')
+      }
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -518,6 +525,16 @@ export function SuperAdminConsole() {
       planMix: [...mix.values()].sort((a, b) => b.kobo - a.kobo),
     }
   }, [data])
+
+  const menuAccounts = useMemo(() => {
+    const query = accountsQuery.trim().toLowerCase()
+    if (!query) return derived.accounts
+    return derived.accounts.filter((account) =>
+      `${account.name ?? ''} ${account.email ?? ''} ${ROLE_LABEL[account.role] ?? account.role}`
+        .toLowerCase()
+        .includes(query),
+    )
+  }, [derived.accounts, accountsQuery])
 
   const integrations = data?.integrations
   const waiting = feed.status === 'loading' && !data
@@ -647,7 +664,10 @@ export function SuperAdminConsole() {
               <div ref={accountsMenuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => setAccountsMenuOpen((open) => !open)}
+                  onClick={() => {
+                    setAccountsMenuOpen((open) => !open)
+                    setAccountsQuery('')
+                  }}
                   aria-expanded={accountsMenuOpen}
                   aria-haspopup="true"
                   className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-white/65 transition hover:border-white/25 hover:text-white"
@@ -656,31 +676,58 @@ export function SuperAdminConsole() {
                   <ChevronDown size={12} className={cn('transition', accountsMenuOpen && 'rotate-180')} />
                 </button>
                 {accountsMenuOpen ? (
-                  <div className="absolute right-0 top-full z-30 mt-2 w-[26rem] max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/15 bg-[#1d1843] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
-                    <p className="border-b border-white/10 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-white/45">
-                      All platform accounts
-                    </p>
-                    <ul data-accounts-menu className="max-h-72 overflow-y-auto">
-                      {derived.accounts.map((account) => (
-                        <li
-                          key={account.id}
-                          className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2.5 last:border-0"
-                        >
-                          <span className="flex min-w-0 items-center gap-2.5">
-                            <Avatar name={account.name || account.email || '?'} />
-                            <span className="min-w-0">
-                              <span className="block truncate text-[12px] font-semibold text-white/85">
-                                {account.name || 'Unnamed account'}
+                  <div className="absolute right-0 top-full z-30 mt-2 w-[30rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-white/15 bg-[#1d1843] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
+                    <div className="border-b border-white/10 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/45">All platform accounts</p>
+                        <span className="shrink-0 text-[10px] font-semibold text-white/45">
+                          {menuAccounts.length === derived.accounts.length
+                            ? `${derived.accounts.length} total`
+                            : `${menuAccounts.length} of ${derived.accounts.length}`}
+                        </span>
+                      </div>
+                      <label className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 focus-within:border-white/30">
+                        <Search size={13} className="shrink-0 text-white/40" />
+                        <input
+                          type="search"
+                          value={accountsQuery}
+                          onChange={(event) => setAccountsQuery(event.target.value)}
+                          placeholder="Search name, email or role"
+                          aria-label="Search accounts"
+                          autoFocus
+                          className="w-full bg-transparent text-[12px] text-white placeholder:text-white/35 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
+                        />
+                      </label>
+                    </div>
+                    {menuAccounts.length ? (
+                      <ul data-accounts-menu className="max-h-72 overflow-y-auto">
+                        {menuAccounts.map((account) => (
+                          <li
+                            key={account.id}
+                            className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2.5 last:border-0"
+                          >
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              <Avatar name={account.name || account.email || '?'} />
+                              <span className="min-w-0">
+                                <span className="block break-words text-[12px] font-semibold leading-snug text-white/85">
+                                  {account.name || 'Unnamed account'}
+                                </span>
+                                <span className="block break-all text-[10px] leading-snug text-white/45">
+                                  {account.email || 'No email'}
+                                </span>
                               </span>
-                              <span className="block truncate text-[10px] text-white/45">{account.email || 'No email'}</span>
                             </span>
-                          </span>
-                          <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>
-                            {ROLE_LABEL[account.role] ?? account.role}
-                          </Chip>
-                        </li>
-                      ))}
-                    </ul>
+                            <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>
+                              {ROLE_LABEL[account.role] ?? account.role}
+                            </Chip>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p data-accounts-menu-empty className="px-3 py-6 text-center text-[11px] text-white/45">
+                        No accounts match “{accountsQuery.trim()}”.
+                      </p>
+                    )}
                   </div>
                 ) : null}
               </div>
