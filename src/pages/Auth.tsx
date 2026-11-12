@@ -565,19 +565,147 @@ export function OpsAdminLandingPage() {
   )
 }
 
-const SUPER_DUTIES = [
+const SUPER_ROLE_DUTIES = [
   {
-    title: 'Platform ownership',
-    copy: 'Full control of every portal, role and account across NeuroBloom LearningSphere.',
+    title: 'Accounts and access',
+    copy: 'Create, edit, suspend and delete accounts for all users, including other admins. Assign roles, permissions and access levels.',
   },
   {
-    title: 'Roles & access',
-    copy: 'Grant or revoke admin access, manage the operations team and approve sensitive exports.',
+    title: 'Platform configuration',
+    copy: 'Set up and maintain global settings, features, integrations and workflows across the whole platform.',
   },
   {
-    title: 'Security & integrity',
-    copy: 'Audit trails, final decisions on flagged content and disputes between users.',
+    title: 'Security policies',
+    copy: 'Enforce passwords, two-factor authentication and data protection, monitor for threats or suspicious activity, and keep the system compliant with legal and regulatory requirements.',
   },
+  {
+    title: 'Admin oversight',
+    copy: 'Supervise regular administrators, set the limits of their authority and step in when something is beyond their permissions.',
+  },
+  {
+    title: 'Backups and recovery',
+    copy: 'Oversee backups, recovery, retention policies and data integrity.',
+  },
+  {
+    title: 'Final escalation point',
+    copy: 'Resolve the technical or access problems that other admins and support staff can’t.',
+  },
+  {
+    title: 'Reporting and records',
+    copy: 'Review activity logs, produce usage and compliance reports, and keep documentation current.',
+  },
+  {
+    title: 'Licences and vendors',
+    copy: 'Manage licences, subscriptions and relationships with software providers.',
+  },
+]
+
+const SUPER_RESPONSIBILITIES = [
+  {
+    title: 'User and access management',
+    items: [
+      'Create, approve, suspend and remove accounts for students, teachers, parents and other admins.',
+      'Define role-based permissions for each group: junior, senior, ASD/ADHD support, teacher, parent and sub-admin.',
+      'Verify teachers and tutors — identity checks, qualifications and background screening — before they get access to students.',
+      'Manage parent–child account linking so each parent sees only their own child’s data.',
+      'Handle account recovery, and make sure the process can’t be abused to reach a child’s account.',
+    ],
+  },
+  {
+    title: 'Child safety and safeguarding',
+    items: [
+      'Set and enforce safeguarding policies for live classes and one-to-one tutoring.',
+      'Control who can contact students, and moderate chat, comments and shared content.',
+      'Review flagged incidents — inappropriate behaviour, bullying, safeguarding concerns — and escalate to the proper authorities when required.',
+      'Oversee recording policies for live sessions, including who can access recordings and how long they are kept.',
+    ],
+  },
+  {
+    title: 'Data protection and privacy',
+    items: [
+      'Ensure compliance with applicable child data and privacy laws (NDPR in Nigeria, plus GDPR, COPPA and others depending on where users are based).',
+      'Manage parental consent for data collection on minors.',
+      'Apply extra protection to sensitive information: learning profiles, diagnoses and support plans for ASD and ADHD learners.',
+      'Oversee encryption, backups, retention and secure deletion of data.',
+      'Review audit logs to detect unauthorised access.',
+    ],
+  },
+  {
+    title: 'Learning content and configuration',
+    items: [
+      'Configure classes, grade levels, subjects, timetables and curriculum structures for the junior and senior sections.',
+      'Oversee the setup of assignments, assessments, grading tools and progress tracking.',
+      'Make sure progress reports shown to parents are accurate, clear and based on real performance data.',
+      'Manage tutoring features: booking, scheduling, matching and session quality.',
+    ],
+  },
+  {
+    title: 'Inclusive and special-needs support',
+    items: [
+      'Work with specialists to configure accessibility features for ASD and ADHD learners: low-distraction interfaces, visual schedules, routines, break reminders and adjustable pacing.',
+      'Ensure teachers assigned to these learners are trained and have the right tools.',
+      'Maintain individualised settings per learner while keeping that information restricted to authorised people.',
+      'Gather feedback from families and specialists to keep improving these features.',
+    ],
+  },
+  {
+    title: 'Live classes and technical operations',
+    items: [
+      'Monitor platform uptime, video and audio quality, and performance during peak class hours.',
+      'Coordinate with developers or IT on bug fixes, updates and new features.',
+      'Manage integrations: video conferencing, payments, notifications and email or SMS.',
+      'Serve as the final escalation point for technical issues that support staff can’t resolve.',
+    ],
+  },
+  {
+    title: 'Support and communication',
+    items: [
+      'Oversee the help desk for teachers, students and parents.',
+      'Resolve disputes, such as complaints about a teacher, grading or billing.',
+      'Send platform-wide announcements, maintenance notices and policy updates.',
+    ],
+  },
+  {
+    title: 'Billing, subscriptions and partnerships',
+    items: [
+      'Manage pricing plans, subscriptions, refunds and payouts to tutors where applicable.',
+      'Handle relationships with schools, vendors and third-party service providers.',
+    ],
+  },
+  {
+    title: 'Reporting and analytics',
+    items: [
+      'Track key metrics: enrollment, attendance, class completion, student progress, teacher performance and parent engagement.',
+      'Produce regular reports for leadership, and compliance reports when required.',
+      'Use data to recommend improvements to the platform and learning experience.',
+    ],
+  },
+  {
+    title: 'Oversight of other admins',
+    items: [
+      'Appoint and supervise sub-admins, such as content admin, support admin and school admin.',
+      'Limit and review their permissions, and audit their activity.',
+      'Keep the number of super admin accounts minimal, with strong security such as mandatory two-factor authentication.',
+    ],
+  },
+]
+
+const SUPER_QUALIFICATIONS = [
+  'Degree in Information Technology, Education Technology, Information Systems, or a related field — or equivalent experience.',
+  '3 to 5+ years in system administration or platform management, ideally in EdTech.',
+  'Strong understanding of cybersecurity, data privacy and child safeguarding.',
+  'Familiarity with learning management systems and live-class tools.',
+  'Awareness of special educational needs, especially ASD and ADHD.',
+  'Excellent communication, decision-making and problem-solving skills.',
+  'High integrity and discretion, since the role has access to sensitive data about children.',
+]
+
+const SUPER_KPIS = [
+  'Platform uptime and live-class reliability',
+  'Zero or minimal safeguarding and data breach incidents',
+  'Speed of issue and complaint resolution',
+  'Parent, teacher and student satisfaction',
+  'Accuracy and timeliness of progress reporting',
 ]
 
 function SuperAdminShell({ children }: { children: ReactNode }) {
@@ -610,21 +738,23 @@ function SuperAdminShell({ children }: { children: ReactNode }) {
 export function SuperAdminLandingPage() {
   return (
     <SuperAdminShell>
-      <main id="main-content" tabIndex={-1} className="flex flex-1 items-center py-10 outline-none">
-        <div className="w-full">
+      <main id="main-content" tabIndex={-1} className="flex-1 py-10 outline-none">
+        <div className="max-w-3xl">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/70">
-            <Crown size={12} /> Super Admin
+            <Crown size={12} /> Exclusive · Super Admin
           </span>
-          <h1 className="mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
-            The Super Admin console.
+          <h1 className="mt-4 text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+            The top-level seat for NeuroBloom LearningSphere.
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
-            The top-level seat for NeuroBloom LearningSphere: every dashboard, every admin account and every sensitive
-            decision sits here. Access is issued to owners only.
+          <p className="mt-3 text-sm leading-relaxed text-white/65">
+            The Super Admin keeps the online classroom safe, accessible and running smoothly for every group the platform
+            serves: junior students, senior students, ASD and ADHD learners, teachers and parents. Because the platform
+            serves children, including children with additional needs, this seat carries heavy responsibility for child
+            safety, data protection and inclusive design.
           </p>
           <div className="mt-6 flex flex-wrap gap-2.5">
             <Link
-              to="/ops-admin/sign-in"
+              to="/super-admin/sign-in"
               className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-white px-5 text-sm font-bold text-[#171238] transition hover:bg-white/90"
             >
               Sign in to Super Admin <ArrowRight size={15} />
@@ -636,21 +766,96 @@ export function SuperAdminLandingPage() {
               Request Super Admin access
             </Link>
           </div>
+          <p className="mt-4 text-[11px] text-white/45">Access is issued to owners only.</p>
+        </div>
 
-          <div className="mt-10 grid gap-3 sm:grid-cols-3">
-            {SUPER_DUTIES.map((duty) => (
-              <div key={duty.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-xs font-bold text-white">{duty.title}</p>
-                <p className="mt-1 text-[11px] leading-relaxed text-white/55">{duty.copy}</p>
-              </div>
+        <section aria-labelledby="super-role" className="mt-12">
+          <h2 id="super-role" className="text-lg font-extrabold tracking-tight text-white">
+            The role of the Super Admin
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-white/50">
+            Eight duties sit at this level, from owning every account on the platform to managing the vendors behind it.
+          </p>
+          <ol className="mt-5 grid gap-3 sm:grid-cols-2">
+            {SUPER_ROLE_DUTIES.map((duty, index) => (
+              <li key={duty.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white/60">
+                    {index + 1}
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold text-white">{duty.title}</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-white/55">{duty.copy}</p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section aria-labelledby="super-core" className="mt-12">
+          <h2 id="super-core" className="text-lg font-extrabold tracking-tight text-white">
+            Core responsibilities
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-white/50">
+            Ten areas of ownership, from safeguarding children to keeping every live class online.
+          </p>
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {SUPER_RESPONSIBILITIES.map((group, index) => (
+              <article key={group.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-bold text-white/60">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <h3 className="text-sm font-bold text-white">{group.title}</h3>
+                </div>
+                <ul className="mt-2.5 space-y-1.5">
+                  {group.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-[11px] leading-relaxed text-white/60">
+                      <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-[#a5b4fc]" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </article>
             ))}
           </div>
+        </section>
 
-          <p className="mt-8 max-w-xl text-[11px] leading-relaxed text-white/45">
-            Super Admin accounts are issued personally by NeuroBloom ownership and carry full platform access, including
-            control over the operations team itself. If you were invited, sign in with the email on your invitation.
-          </p>
-        </div>
+        <section aria-labelledby="super-qualifications" className="mt-12 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <h2 id="super-qualifications" className="text-lg font-extrabold tracking-tight text-white">
+              Required qualifications
+            </h2>
+            <ul className="mt-3 space-y-2">
+              {SUPER_QUALIFICATIONS.map((item) => (
+                <li key={item} className="flex items-start gap-2 text-[11px] leading-relaxed text-white/60">
+                  <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-[#a5b4fc]" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <h2 className="text-lg font-extrabold tracking-tight text-white">How success is measured</h2>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/50">
+              Key performance indicators for this seat.
+            </p>
+            <ul className="mt-3 space-y-2">
+              {SUPER_KPIS.map((item) => (
+                <li key={item} className="flex items-start gap-2 text-[11px] leading-relaxed text-white/60">
+                  <ArrowRight size={12} className="mt-0.5 shrink-0 text-[#a5b4fc]" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <p className="mt-10 max-w-2xl text-[11px] leading-relaxed text-white/45">
+          Super Admin accounts are issued personally by NeuroBloom ownership and carry full platform access, including
+          control over the operations team itself. If you were invited, sign in with the email on your invitation.
+        </p>
       </main>
     </SuperAdminShell>
   )
