@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom'
 import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   BarChart3,
-  ChevronDown,
   Cloud,
   CreditCard,
   Crown,
@@ -442,40 +442,12 @@ export function SuperAdminConsole() {
     if (!knownSection) navigate('/super-admin/console', { replace: true })
   }, [knownSection, navigate])
 
+  const [accessQuery, setAccessQuery] = useState('')
+
   useEffect(() => {
     window.scrollTo({ top: 0 })
+    setAccessQuery('')
   }, [active.id])
-
-  const [accountsMenuOpen, setAccountsMenuOpen] = useState(false)
-  const [accountsQuery, setAccountsQuery] = useState('')
-  const accountsMenuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    setAccountsMenuOpen(false)
-    setAccountsQuery('')
-  }, [active.id])
-
-  useEffect(() => {
-    if (!accountsMenuOpen) return
-    const onPointerDown = (event: MouseEvent) => {
-      if (accountsMenuRef.current && !accountsMenuRef.current.contains(event.target as Node)) {
-        setAccountsMenuOpen(false)
-        setAccountsQuery('')
-      }
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setAccountsMenuOpen(false)
-        setAccountsQuery('')
-      }
-    }
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [accountsMenuOpen])
 
   async function handleSignOut() {
     await signOut()
@@ -526,15 +498,15 @@ export function SuperAdminConsole() {
     }
   }, [data])
 
-  const menuAccounts = useMemo(() => {
-    const query = accountsQuery.trim().toLowerCase()
+  const accessAccounts = useMemo(() => {
+    const query = accessQuery.trim().toLowerCase()
     if (!query) return derived.accounts
     return derived.accounts.filter((account) =>
       `${account.name ?? ''} ${account.email ?? ''} ${ROLE_LABEL[account.role] ?? account.role}`
         .toLowerCase()
         .includes(query),
     )
-  }, [derived.accounts, accountsQuery])
+  }, [derived.accounts, accessQuery])
 
   const integrations = data?.integrations
   const waiting = feed.status === 'loading' && !data
@@ -661,76 +633,14 @@ export function SuperAdminConsole() {
             title="Newest accounts"
             icon={Users}
             action={
-              <div ref={accountsMenuRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccountsMenuOpen((open) => !open)
-                    setAccountsQuery('')
-                  }}
-                  aria-expanded={accountsMenuOpen}
-                  aria-haspopup="true"
-                  className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-white/65 transition hover:border-white/25 hover:text-white"
-                >
-                  {derived.accounts.length} total
-                  <ChevronDown size={12} className={cn('transition', accountsMenuOpen && 'rotate-180')} />
-                </button>
-                {accountsMenuOpen ? (
-                  <div className="absolute right-0 top-full z-30 mt-2 w-[30rem] max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/15 bg-[#1d1843] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
-                    <div className="border-b border-white/10 px-3 py-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-white/45">All platform accounts</p>
-                        <span className="shrink-0 text-[10px] font-semibold text-white/45">
-                          {menuAccounts.length === derived.accounts.length
-                            ? `${derived.accounts.length} total`
-                            : `${menuAccounts.length} of ${derived.accounts.length}`}
-                        </span>
-                      </div>
-                      <label className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 focus-within:border-white/30">
-                        <Search size={13} className="shrink-0 text-white/40" />
-                        <input
-                          type="search"
-                          value={accountsQuery}
-                          onChange={(event) => setAccountsQuery(event.target.value)}
-                          placeholder="Search name, email or role"
-                          aria-label="Search accounts"
-                          autoFocus
-                          className="w-full bg-transparent text-[12px] text-white placeholder:text-white/35 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
-                        />
-                      </label>
-                    </div>
-                    {menuAccounts.length ? (
-                      <ul data-accounts-menu className="max-h-72 overflow-y-auto">
-                        {menuAccounts.map((account) => (
-                          <li
-                            key={account.id}
-                            className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-3 py-2.5 last:border-0"
-                          >
-                            <span className="flex min-w-0 items-center gap-2.5">
-                              <Avatar name={account.name || account.email || '?'} />
-                              <span className="min-w-0">
-                                <span className="block break-words text-[12px] font-semibold leading-snug text-white/85">
-                                  {account.name || 'Unnamed account'}
-                                </span>
-                                <span className="block break-all text-[10px] leading-snug text-white/45">
-                                  {account.email || 'No email'}
-                                </span>
-                              </span>
-                            </span>
-                            <Chip tone={account.role === 'admin' ? 'info' : 'neutral'}>
-                              {ROLE_LABEL[account.role] ?? account.role}
-                            </Chip>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p data-accounts-menu-empty className="px-3 py-6 text-center text-[11px] text-white/45">
-                        No accounts match “{accountsQuery.trim()}”.
-                      </p>
-                    )}
-                  </div>
-                ) : null}
-              </div>
+              <Link
+                to="/super-admin/console/access"
+                aria-label={`View all ${derived.accounts.length} accounts`}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-white/65 transition hover:border-white/25 hover:text-white"
+              >
+                {derived.accounts.length} total
+                <ArrowRight size={12} />
+              </Link>
             }
           >
             {derived.accounts.length ? (
@@ -773,7 +683,24 @@ export function SuperAdminConsole() {
               </Chip>
             ))}
           </div>
-          <Panel title="All platform accounts" icon={Users} badge={`${derived.accounts.length} accounts`}>
+          <Panel
+            title="All platform accounts"
+            icon={Users}
+            badge={accessQuery ? `${accessAccounts.length} of ${derived.accounts.length}` : `${derived.accounts.length} accounts`}
+          >
+            <div className="-mx-4 -mt-3.5 mb-3 border-b border-white/10 px-4 pb-3 sm:-mx-5 sm:px-5">
+              <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 focus-within:border-white/30 sm:max-w-xs">
+                <Search size={13} className="shrink-0 text-white/40" aria-hidden />
+                <input
+                  type="search"
+                  value={accessQuery}
+                  onChange={(event) => setAccessQuery(event.target.value)}
+                  placeholder="Search name, email or role"
+                  aria-label="Search accounts"
+                  className="w-full bg-transparent text-[12px] text-white placeholder:text-white/35 focus:outline-none [&::-webkit-search-cancel-button]:appearance-none"
+                />
+              </label>
+            </div>
             <div className="-mx-4 overflow-x-auto sm:-mx-5">
               <table className="w-full min-w-[680px] text-left">
                 <thead>
@@ -790,7 +717,7 @@ export function SuperAdminConsole() {
                   </tr>
                 </thead>
                 <tbody>
-                  {derived.accounts.map((account) => (
+                  {accessAccounts.map((account) => (
                     <tr
                       key={account.id}
                       className="border-b border-white/[0.07] transition last:border-0 hover:bg-white/[0.03]"
@@ -820,7 +747,11 @@ export function SuperAdminConsole() {
                 </tbody>
               </table>
             </div>
-            {!derived.accounts.length ? <p className="pt-3 text-[12px] text-white/50">No accounts yet.</p> : null}
+            {!derived.accounts.length ? (
+              <p className="pt-3 text-[12px] text-white/50">No accounts yet.</p>
+            ) : accessAccounts.length ? null : (
+              <p className="pt-3 text-[12px] text-white/50">No accounts match “{accessQuery.trim()}”.</p>
+            )}
           </Panel>
         </div>
       )
