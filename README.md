@@ -233,12 +233,16 @@ folder and every `.env*` file except `.env.example` are git-ignored.
 
 ## Database
 
-Apply `supabase/migrations/0001` → `0004` to a Supabase project (SQL editor or CLI):
+Apply `supabase/migrations/0001` → `0005` to a Supabase project (SQL editor or CLI):
 
 - `profiles` — one row per account: full name, phone, role (fixed by RLS), created_at.
 - `user_state` — per-user JSON blob for the whole app state, with self read/insert/update policies.
 - `payments` — Paystack references, plan, amount, status and metadata; users may read their own.
 - `email_log` — deliveries recorded by the email endpoint.
+- `children`, `classes`, `enrollments`, `assignments`, `submissions`, `activity_completions` — the
+  Phase 1 homework model. Guardians read their own child's work; class teachers set and grade it;
+  admins see everything. `src/lib/homework.ts` falls back to seeded demo content until the
+  migration is applied.
 - Admin role is stored on `profiles.role = 'admin'`; no policy lets a user set it themselves.
 
 ## Payments and plans

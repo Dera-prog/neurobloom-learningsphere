@@ -181,16 +181,29 @@ function useConsoleFeed() {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       })
-      const body = await response.json().catch(() => null)
+      const body: unknown = await response.json().catch(() => null)
       if (!response.ok) {
+        const message =
+          body && typeof body === 'object' && typeof (body as { message?: unknown }).message === 'string'
+            ? (body as { message: string }).message
+            : null
         setFeed({
           status: 'error',
           data: null,
-          error: body?.message || `The live data request failed (${response.status}).`,
+          error: message || `The live data request failed (${response.status}).`,
         })
         return
       }
-      setFeed({ status: 'ready', data: body as ConsoleData })
+      const data = body as Partial<ConsoleData> | null
+      if (!data || !Array.isArray(data.accounts) || !Array.isArray(data.payments) || !data.integrations) {
+        setFeed({
+          status: 'error',
+          data: null,
+          error: 'The live data service returned an unexpected response. Check that the API is deployed.',
+        })
+        return
+      }
+      setFeed({ status: 'ready', data: data as ConsoleData })
     } catch {
       setFeed({ status: 'error', data: null, error: 'Could not reach the platform data service.' })
     }

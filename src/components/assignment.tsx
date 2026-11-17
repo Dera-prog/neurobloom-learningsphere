@@ -18,6 +18,8 @@ import { useApp } from '../store/store'
 import { addDays, cn, dueLabelFor, uid } from '../lib/utils'
 import { Badge, Button, Input, Modal, ProgressBar, Ring, Select, TextArea } from './ui'
 import { Confetti, useToast } from './toast'
+import { useAuth } from '../lib/auth'
+import { publishAssignment } from '../lib/homework'
 
 /* --------------------------------- Quiz ----------------------------------- */
 
@@ -589,6 +591,7 @@ const subjectColors: Record<string, string> = {
 
 export function CreateAssignmentModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { dispatch } = useApp()
+  const { profile: account } = useAuth()
   const toast = useToast()
   const [title, setTitle] = useState('')
   const [subject, setSubject] = useState('Mathematics')
@@ -597,6 +600,7 @@ export function CreateAssignmentModal({ open, onClose }: { open: boolean; onClos
   const [type, setType] = useState('Problem Set')
   const [dueIn, setDueIn] = useState(3)
   const [instructions, setInstructions] = useState('')
+  const [publishing, setPublishing] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -607,13 +611,16 @@ export function CreateAssignmentModal({ open, onClose }: { open: boolean; onClos
     setType('Problem Set')
     setDueIn(3)
     setInstructions('')
+    setPublishing(false)
   }, [open])
 
-  const create = () => {
+  const create = async () => {
     if (!title.trim()) {
       toast('Give the assignment a title', { tone: 'warn' })
       return
     }
+    if (publishing) return
+    const teacherName = account?.full_name?.trim() || 'your class teacher'
     const date = addDays(dueIn)
     const assignment: Assignment = {
       id: uid('asg'),
@@ -624,14 +631,50 @@ export function CreateAssignmentModal({ open, onClose }: { open: boolean; onClos
       dueDate: date.toISOString(),
       dueLabel: dueLabelFor(date),
       type,
-      description: instructions.trim() || `New ${type.toLowerCase()} set by Dr. Kelechi Azu for ${level}.`,
+      description: instructions.trim() || `New ${type.toLowerCase()} set by ${teacherName} for ${level}.`,
       instructions: instructions.trim() || undefined,
       autoGrade: false,
       status: 'pending',
       stage: level.startsWith('JSS') ? 'junior' : 'senior',
     }
     dispatch({ type: 'CREATE_ASSIGNMENT', assignment, level })
-    toast('Assignment published', { description: `${title.trim()} is now live for ${level}.`, tone: 'success' })
+
+    if (!account?.id) {
+      toast('Saved on this device', {
+        description: 'Sign in to publish assignments to the class record.',
+        tone: 'warn',
+      })
+      onClose()
+      return
+    }
+
+    setPublishing(true)
+    const result = await publishAssignment(
+      {
+        title: assignment.title,
+        subject,
+        level,
+        type,
+        description: assignment.description,
+        instructions: assignment.instructions,
+        points,
+        dueAt: assignment.dueDate,
+        stage: assignment.stage,
+      },
+      { id: account.id, name: teacherName },
+    )
+    setPublishing(false)
+    if (result.ok) {
+      toast('Assignment published', {
+        description: `${assignment.title} is in the ${level} ${subject} class record. Enrolled families see it on Homework Help.`,
+        tone: 'success',
+      })
+    } else {
+      toast('Saved on this device', {
+        description: 'The school record is not connected, so this assignment stays in the app for now.',
+        tone: 'warn',
+      })
+    }
     onClose()
   }
 
@@ -640,14 +683,14 @@ export function CreateAssignmentModal({ open, onClose }: { open: boolean; onClos
       open={open}
       onClose={onClose}
       title="Create assignment"
-      subtitle="It will appear in your students’ dashboards immediately."
+      subtitle="Published work lands in the class record; enrolled families see it on Homework Help."
       footer={
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={publishing}>
             Cancel
           </Button>
-          <Button variant="role" size="sm" onClick={create}>
-            <Plus size={13} /> Publish assignment
+          <Button variant="role" size="sm" onClick={create} disabled={publishing}>
+            <Plus size={13} /> {publishing ? 'Publishing…' : 'Publish assignment'}
           </Button>
         </div>
       }

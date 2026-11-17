@@ -60,6 +60,7 @@ import {
   ParentAttendance,
   ParentBilling,
   ParentHome,
+  ParentHomework,
   ParentMessages,
   ParentProgress,
   ParentSafety,
@@ -139,6 +140,7 @@ const routeTitles: Record<string, string> = {
   '/parent/progress': 'Academic progress · Parent · NeuroBloom',
   '/parent/attendance': 'Attendance · Parent · NeuroBloom',
   '/parent/assignments': 'Assignments · Parent · NeuroBloom',
+  '/parent/homework': 'Homework help · Parent · NeuroBloom',
   '/parent/teachers': 'Teachers · Parent · NeuroBloom',
   '/parent/subscriptions': 'Subscriptions · Parent · NeuroBloom',
   '/parent/billing': 'My Billing · Parent · NeuroBloom',
@@ -273,6 +275,7 @@ export default function App() {
         <Route path="/parent/progress" element={guard('parent', <ParentProgress />)} />
         <Route path="/parent/attendance" element={guard('parent', <ParentAttendance />)} />
         <Route path="/parent/assignments" element={guard('parent', <ParentAssignments />)} />
+        <Route path="/parent/homework" element={guard('parent', <ParentHomework />)} />
         <Route path="/parent/teachers" element={guard('parent', <ParentTeachers />)} />
         <Route path="/parent/subscriptions" element={guard('parent', <ParentSubscriptions />)} />
         <Route path="/parent/billing" element={guard('parent', <ParentBilling />)} />

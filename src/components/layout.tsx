@@ -22,8 +22,9 @@ import {
 } from 'lucide-react'
 import { roleConfigs, type RoleConfig } from '../config/roles'
 import type { Audience } from '../data/content'
-import { notificationsByRole, earningsMonths } from '../data/content'
+import { notificationsByRole, earningsMonths, plans } from '../data/content'
 import { useApp } from '../store/store'
+import { orderedChildren } from '../lib/parent-children'
 import { cn, daysUntil, initials, nextWaecDate, naira } from '../lib/utils'
 import { useAuth } from '../lib/auth'
 import { addComplaint, COMPLAINT_CATEGORIES } from '../lib/complaints'
@@ -107,19 +108,27 @@ function SidebarFooter({ config }: { config: RoleConfig }) {
     )
   }
 
+  const children = orderedChildren(state.children)
+  const firstNames = children.map((child) => child.name.split(' ')[0])
+  const heading = firstNames.length > 1 ? `${firstNames.join(' & ')}’s plans` : `${firstNames[0]}’s plan`
+  const summary = children
+    .map((child) => plans.find((entry) => entry.id === state.plans[child.slot])?.name)
+    .filter(Boolean)
+    .join(' · ')
+
   return (
     <Link
-      to={state.newAccount ? '/parent/subscriptions' : '/parent/support'}
+      to={state.newAccount ? '/parent/subscriptions' : '/parent/billing'}
       className="block rounded-2xl border border-border bg-role-soft p-3.5 transition hover:shadow-sm"
     >
       <div className="flex items-center gap-1.5 text-role-ink">
         <HeartHandshake size={14} />
-        <span className="text-[11px] font-bold">{state.newAccount ? 'No plan chosen yet' : 'Chidi’s ASD plan is active'}</span>
+        <span className="text-[11px] font-bold">{state.newAccount ? 'No plan chosen yet' : heading}</span>
       </div>
       <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
         {state.newAccount
           ? 'Choose a plan for your child to unlock lessons and progress tracking.'
-          : 'Special Needs Premium · view goals and specialist notes.'}
+          : `${summary} · view renewal and receipts.`}
       </p>
     </Link>
   )
@@ -330,7 +339,7 @@ function SidebarIdentity({
         )}
         style={{ background: config.role === 'junior' ? 'var(--jr-avatar)' : config.user.avatarBg, color: config.user.avatarColor }}
       >
-        {config.user.emoji ?? config.user.initials}
+        {config.user.emoji ?? (name === config.user.name ? config.user.initials : initials(name))}
       </div>
       <div className={cn('min-w-0 text-center', !specialUser && 'text-left')}>
         <p className={cn('truncate text-sm font-bold', solid ? 'text-white' : 'text-foreground')}>{name}</p>
@@ -409,7 +418,8 @@ function SidebarContent({ config, onNavigate, onClose }: { config: RoleConfig; o
       {config.role === 'admin' ? (
         <Link
           to={`/admin/profile${previewSuffix}`}
-          onClick={onNavigate}          aria-label="Open administrator profile and daily tasks"
+          onClick={onNavigate}
+          aria-label="Open administrator profile and daily tasks"
           className="mb-4 block rounded-2xl transition hover:ring-1 hover:ring-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
         >
           <SidebarIdentity config={config} name={name} meta={meta} solid={solid} specialUser={specialUser} chevron />
@@ -609,7 +619,7 @@ export function HeaderActions({ role }: { role: Audience }) {
       <div className="flex items-center gap-2">
         <NotificationBell role={role} />
         <div className="shell-chip hidden h-9 items-center gap-2 rounded-xl border border-border bg-card py-1 pl-1 pr-2.5 sm:flex">
-          <Avatar emoji={config.user.emoji} initials={config.user.initials} color={config.user.avatarColor} size="sm" />
+          <Avatar emoji={config.user.emoji} initials={config.user.initials} color={config.user.avatarColor} soft={config.user.avatarBg} size="sm" />
           <span className="max-w-28 truncate text-[11px] font-semibold text-inherit">{firstName(config.user.name)}</span>
         </div>
       </div>
@@ -632,7 +642,7 @@ export function HeaderActions({ role }: { role: Audience }) {
           aria-label={`Account menu for ${fullName}`}
           className="shell-chip flex h-9 items-center gap-2 rounded-xl border border-border bg-card py-1 pl-1 pr-2.5 transition hover:bg-muted"
         >
-          <Avatar initials={label} color={config.user.avatarColor} size="sm" />
+          <Avatar initials={label} color={config.user.avatarColor} soft={config.user.avatarBg} size="sm" />
           <span className="hidden max-w-28 truncate text-[11px] font-semibold text-inherit sm:block">{shortName}</span>
         </button>
 

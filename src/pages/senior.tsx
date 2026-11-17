@@ -83,9 +83,12 @@ export function SeniorHome() {
   const waec = daysUntil(nextWaecDate())
   const assignments = state.assignments.filter((a) => a.stage === 'senior')
   const pending = assignments.filter((a) => a.status === 'pending')
-  const nextBooking = state.bookings.find((b) => b.audience === 'senior')
   const seniorBookings = state.bookings.filter((b) => b.audience === 'senior')
+  const upcomingBookings = seniorBookings.filter((b) => b.status === 'upcoming')
+  const nextBooking = upcomingBookings[0]
   const average = performanceTrend[performanceTrend.length - 1].score
+  const target = performanceTrend[performanceTrend.length - 1].target
+  const aboveTarget = average >= target
 
   return (
     <RoleLayout role="senior">
@@ -105,10 +108,12 @@ export function SeniorHome() {
                 <Target size={13} /> WAEC 2027 preparation
               </span>
               <h2 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-[28px]">
-                Steady progress to your A1 average.
+                {aboveTarget ? 'You’re holding your A1 average.' : 'Steady progress to your A1 average.'}
               </h2>
               <p className="mt-1.5 text-sm text-white/75">
-                You’re {Math.round(100 - average)} points from your target. Physics is the subject with the fastest gains.
+                {aboveTarget
+                  ? `You’re ${Math.round(average - target)} points above your A1 target of ${target}%. Physics is the subject with the fastest gains.`
+                  : `You’re ${Math.round(target - average)} points from your A1 target of ${target}%. Physics is the subject with the fastest gains.`}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
@@ -147,8 +152,8 @@ export function SeniorHome() {
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatCard label="Term average" value={`${average}%`} icon={TrendingUp} color="var(--role-accent)" soft="var(--role-soft)" trend={{ value: '4.2% this term' }} />
           <StatCard label="Target" value="A1" icon={Target} color="#6c3fc5" soft="#f0eefb" sub="75%+ overall" />
-          <StatCard label="Assignments due" value={pending.length} icon={ClipboardList} color="#f59e0b" soft="#fffbeb" sub="Senior track" />
-          <StatCard label="Private sessions" value={seniorBookings.length} icon={GraduationCap} color="#10b981" soft="#ecfdf5" sub={seniorBookings.length ? `${seniorBookings.length} upcoming` : 'Book anytime'} />
+          <StatCard label="Assignments due" value={pending.length} icon={ClipboardList} color="#f59e0b" soft="#fffbeb" sub={pending.length ? pending[0].dueLabel : 'Nothing due'} />
+          <StatCard label="Private sessions" value={upcomingBookings.length} icon={GraduationCap} color="#10b981" soft="#ecfdf5" sub={nextBooking ? nextBooking.when : 'Book anytime'} />
         </div>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
@@ -507,7 +512,7 @@ export function SeniorAssignments() {
       />
       <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="To do" value={counts.pending} icon={ClipboardList} color="var(--role-accent)" soft="var(--role-soft)" sub="Senior track" />
+          <StatCard label="To do" value={counts.pending} icon={ClipboardList} color="var(--role-accent)" soft="var(--role-soft)" sub={assignments.find((a) => a.status === 'pending')?.dueLabel ?? 'All caught up'} />
           <StatCard label="Submitted" value={counts.submitted} icon={Clock} color="#6c3fc5" soft="#f0eefb" sub="Awaiting grading" />
           <StatCard label="Graded" value={counts.graded} icon={CheckCircle2} color="#10b981" soft="#ecfdf5" sub="Feedback ready" />
           <StatCard label="Average score" value="84%" icon={TrendingUp} color="#f59e0b" soft="#fffbeb" trend={{ value: '3.1%' }} />

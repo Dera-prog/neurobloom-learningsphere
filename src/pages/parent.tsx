@@ -13,8 +13,10 @@ import {
   Download,
   FileText,
   HeartHandshake,
+  Lightbulb,
   Lock,
   MessageCircle,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   Star,
@@ -60,7 +62,16 @@ import {
   type PlanId,
 } from '../data/content'
 import { cn, dayMonth, downloadCsv, downloadText, greeting, longDate, naira, nextMonthlyDay, uid } from '../lib/utils'
-import { orderedChildren, resolveChildren, type ResolvedChild } from '../lib/parent-children'
+import { orderedChildren, resolveChildren, CHILD_SLOTS, demoChildRecords, type ResolvedChild } from '../lib/parent-children'
+import {
+  homeworkConfigured,
+  loadHomework,
+  recordActivityCompletion,
+  seedHomework,
+  teachersFromRecords,
+  type HomeworkSnapshot,
+  type HomeworkTeacher,
+} from '../lib/homework'
 import { useAuth } from '../lib/auth'
 import { NewUserDashboard } from '../components/onboarding'
 import { DailyProgressCard } from '../components/parent-daily-progress'
@@ -753,6 +764,464 @@ export function ParentAssignments() {
   )
 }
 
+const subjectHomeTip: Record<string, string> = {
+  Maths: 'Ask them to draw the problem or use objects, then explain each step out loud.',
+  Mathematics: 'Ask them to draw the problem or use objects, then explain each step out loud.',
+  English: 'Read the question aloud together, then plan three bullet points before writing.',
+  Science: 'Find one real example at home and connect it to the lesson before they write.',
+  'Basic Science': 'Find one real example at home and connect it to the lesson before they write.',
+}
+
+const subjectColors: Record<string, string> = {
+  Maths: '#6c3fc5',
+  Mathematics: '#6c3fc5',
+  'Further Mathematics': '#6c3fc5',
+  English: '#0ea5e9',
+  Science: '#10b981',
+  'Basic Science': '#10b981',
+  Physics: '#10b981',
+  Chemistry: '#f59e0b',
+  Biology: '#ec4899',
+  Government: '#8b5cf6',
+  Numeracy: '#ec4899',
+}
+
+function subjectColorFor(subject: string) {
+  return subjectColors[subject] ?? '#64748b'
+}
+
+const subjectTeacherName: Record<string, string> = {
+  Maths: 'Mathematics',
+  Science: 'Basic Science',
+}
+
+function teacherForHomework(teachers: HomeworkTeacher[], subject: string) {
+  const subjectName = subjectTeacherName[subject] ?? subject
+  return teachers.find((entry) => entry.subject === subjectName) ?? teachers[0] ?? null
+}
+
+export function ParentHomework() {
+  const { state, dispatch } = useApp()
+  const toast = useToast()
+  const { profile: account } = useAuth()
+  const { child, setChild, list, profile } = useParentChildren()
+  const [helpId, setHelpId] = useState<string | null>(null)
+  const [contact, setContact] = useState<string | null>(null)
+  const [homework, setHomework] = useState<HomeworkSnapshot | null>(null)
+  const [loadingHomework, setLoadingHomework] = useState(homeworkConfigured)
+  const lastChild = useRef<ChildId | null>(null)
+
+  const childRecord = (state.children.length ? state.children : demoChildRecords())[CHILD_SLOTS.indexOf(child)]
+  const childName = childRecord?.name ?? profile.name
+  const childLevel = childRecord?.className ?? profile.level
+  const childSpecial = childRecord?.specialNeeds ?? profile.specialNeeds
+  const childDemo =
+    childRecord?.demo === true || demoChildRecords().some((demo) => demo.name.toLowerCase() === childName.toLowerCase())
+
+  useEffect(() => {
+    if (!account?.id) {
+      setHomework(null)
+      setLoadingHomework(false)
+      lastChild.current = null
+      return
+    }
+    let active = true
+    if (lastChild.current !== child) {
+      setHomework(null)
+      setLoadingHomework(homeworkConfigured)
+      lastChild.current = child
+    }
+    const fallback = {
+      assignments: childDemo ? seedHomework(state.assignments) : [],
+      teachers: profile.hasHistory ? teachersFromRecords(parentTeachers[child]) : [],
+      completedIds: [...state.completedActivities],
+      minutes: state.totalActivityMinutes,
+    }
+    loadHomework({
+      guardianId: account.id,
+      child: { slot: child, name: childName, className: childLevel, specialNeeds: childSpecial, demo: childDemo },
+      fallback,
+    }).then((snapshot) => {
+      if (!active) return
+      setHomework(snapshot)
+      setLoadingHomework(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [account?.id, child, childName, childLevel, childSpecial, childDemo, profile.hasHistory, state.assignments, state.completedActivities, state.totalActivityMinutes])
+
+  const assignments = homework?.assignments ?? seedHomework(state.assignments)
+  const open = assignments.filter((a) => a.status === 'pending')
+  const graded = assignments.filter((a) => a.status === 'graded')
+  const subjects = [...new Set(open.map((a) => a.subject))]
+  const helpAssignment = assignments.find((a) => a.id === helpId) ?? null
+  const helpActivity = specialActivities.find((a) => a.id === helpId) ?? null
+  const teachers: HomeworkTeacher[] = homework?.teachers.length
+    ? homework.teachers
+    : profile.hasHistory
+      ? teachersFromRecords(parentTeachers[child])
+      : []
+  const completedIds = homework ? homework.completedIds : state.completedActivities
+  const completedActivities = specialActivities.filter((a) => completedIds.includes(a.id))
+  const practiceMinutes = homework ? homework.minutes : state.totalActivityMinutes
+  const hasWork =
+    profile.hasHistory || Boolean(homework && (homework.assignments.length > 0 || homework.completedIds.length > 0))
+  const firstName = profile.name.split(' ')[0]
+  const author = account?.full_name?.trim() || 'Parent'
+
+  const routine = profile.specialNeeds
+    ? [
+        'Show the visual schedule before starting so the session feels predictable.',
+        'Work in 5-minute blocks with a short movement break between them.',
+        'Offer two acceptable choices so they keep control of the order.',
+        'Finish with specific praise for effort, not only the right answer.',
+      ]
+    : [
+        'Same desk and same time — phones stay in another room.',
+        'They explain the task in their own words before writing anything.',
+        'Start the first step together, then step back and let them try.',
+        'Stop at 20 minutes and take a short break before returning.',
+      ]
+
+  const saveRoutine = () => {
+    const slug = profile.name.replace(/\s+/g, '-').toLowerCase()
+    const lines = profile.specialNeeds
+      ? specialActivities.map(
+          (a) => `${completedIds.includes(a.id) ? '[x]' : '[ ]'} ${a.title} (${a.minutes} min)`,
+        )
+      : open.map((a) => `${a.title} — ${a.subject}, ${a.dueLabel} (${a.points} pts)`)
+    downloadText(
+      `${slug}-homework-routine.txt`,
+      [
+        `Homework routine for ${profile.name} (${profile.level})`,
+        '',
+        ...routine.map((step, index) => `${index + 1}. ${step}`),
+        '',
+        profile.specialNeeds ? 'At-home practice:' : 'Open homework:',
+        ...(lines.length ? lines.map((line) => `- ${line}`) : ['- Nothing open right now.']),
+      ].join('\n'),
+    )
+    toast('Routine saved', `${firstName}’s plan is in your downloads.`)
+  }
+
+  const markPractised = async (activity: (typeof specialActivities)[number]) => {
+    if (homework?.childId && account?.id && !completedIds.includes(activity.id)) {
+      const saved = await recordActivityCompletion(homework.childId, activity, account.id)
+      if (!saved.ok) {
+        toast('Saved on this device', 'The practice is ticked here, but the school record could not be updated.')
+      }
+    }
+    dispatch({ type: 'COMPLETE_ACTIVITY', id: activity.id, minutes: activity.minutes, points: activity.reward })
+    setHomework((current) =>
+      current && !current.completedIds.includes(activity.id)
+        ? { ...current, completedIds: [...current.completedIds, activity.id], minutes: current.minutes + activity.minutes }
+        : current,
+    )
+    toast('Practised at home', `${activity.title} is marked done and ${activity.reward} points were added.`)
+    setHelpId(null)
+  }
+
+  return (
+    <RoleLayout role="parent">
+      <PageHeader
+        title="Homework help"
+        subtitle="Coach the thinking, not the answer"
+        badge={
+          <span className="flex items-center gap-1.5">
+            <Badge tone="role">{profile.level}</Badge>
+            {homework?.source === 'demo' && homeworkConfigured ? <Badge tone="neutral">Sample data</Badge> : null}
+          </span>
+        }
+        actions={<HeaderActions role="parent" />}
+      />
+      <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
+        <ChildSwitch child={child} onChange={setChild} children={list} />
+
+        {loadingHomework && !homework ? (
+          <Card className="flex items-center justify-center gap-2 p-10 text-xs text-muted-foreground">
+            <RefreshCw size={14} className="animate-spin" /> Loading homework…
+          </Card>
+        ) : !hasWork ? (
+          <EmptyState
+            emoji="🌱"
+            title="No homework yet"
+            description={`${firstName} has not started lessons. Homework and at-home practice will appear here once class begins.`}
+            action={
+              <Link to="/parent/progress" className={buttonStyles('outline', 'sm')}>
+                View progress <ArrowRight size={13} />
+              </Link>
+            }
+          />
+        ) : (
+          <>
+            {profile.specialNeeds ? (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatCard label="At-home ideas" value={specialActivities.length} icon={HeartHandshake} color="var(--role-accent)" soft="var(--role-soft)" sub="This week" />
+                <StatCard label="Practised" value={completedActivities.length} icon={CheckCircle2} color="#10b981" soft="#ecfdf5" sub="Done together" />
+                <StatCard label="Practice minutes" value={practiceMinutes} icon={Timer} color="#0ea5e9" soft="#e8f4fd" sub="Learning time" />
+                <StatCard label="Awards" value={specialAwards.filter((a) => a.earned).length} icon={Star} color="#f59e0b" soft="#fffbeb" sub="Earned so far" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <StatCard label="Open homework" value={open.length} icon={ClipboardList} color="#64748b" soft="#f1f5f9" sub={open.length ? 'Needs a nudge' : 'All handed in'} />
+                <StatCard label="Next due" value={open[0]?.dueLabel ?? '—'} icon={Clock} color="#f59e0b" soft="#fffbeb" sub={open[0]?.subject ?? 'Nothing pending'} />
+                <StatCard label="Subjects" value={subjects.length} icon={BookOpen} color="#0ea5e9" soft="#e8f4fd" sub={subjects.join(', ') || 'No open work'} />
+                <StatCard label="Graded" value={graded.length} icon={Star} color="#10b981" soft="#ecfdf5" sub={graded.length ? 'Feedback ready' : 'No marks yet'} />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
+              <div className="space-y-4">
+                {profile.specialNeeds ? (
+                  <SectionCard title="Practise together at home" subtitle="Short, calm sessions with the people they trust" icon={HeartHandshake}>
+                    <div className="space-y-2.5">
+                      {specialActivities.map((activity) => {
+                        const done = completedIds.includes(activity.id)
+                        return (
+                          <div key={activity.id} className="rounded-xl border border-border/70 p-3">
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg" style={{ background: activity.soft }} aria-hidden>
+                                {activity.emoji}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-bold text-foreground">{activity.title}</p>
+                                <p className="text-[10px] text-muted-foreground">{activity.tag} · {activity.minutes} min · +{activity.reward} points</p>
+                              </div>
+                              <Badge tone={done ? 'success' : 'neutral'}>{done ? 'Done' : 'Suggested'}</Badge>
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button size="sm" variant="outline" onClick={() => setHelpId(activity.id)}>
+                                <Lightbulb size={13} /> How to practise
+                              </Button>
+                              {!done ? (
+                                <Button size="sm" variant="ghost" onClick={() => markPractised(activity)}>
+                                  Mark done at home
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </SectionCard>
+                ) : (
+                  <>
+                    <SectionCard title="Open homework" subtitle="Open a task for a short coaching plan" icon={ClipboardList}>
+                      <div className="space-y-2.5">
+                        {open.map((assignment) => {
+                          const teacher = teacherForHomework(teachers, assignment.subject)
+                          return (
+                            <div key={assignment.id} className="rounded-xl border border-border/70 p-3">
+                              <div className="flex items-start gap-3">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[10px] font-extrabold" style={{ background: `${subjectColorFor(assignment.subject)}18`, color: subjectColorFor(assignment.subject) }} aria-hidden>
+                                  {assignment.subject.slice(0, 2).toUpperCase()}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-foreground">{assignment.title}</p>
+                                  <p className="text-[10px] text-muted-foreground">{assignment.subject} · {assignment.type} · {assignment.points} pts</p>
+                                </div>
+                                <Badge tone={assignment.dueLabel === 'Due today' ? 'warn' : 'neutral'}>{assignment.dueLabel}</Badge>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <Button size="sm" variant="outline" onClick={() => setHelpId(assignment.id)}>
+                                  <Lightbulb size={13} /> How to help
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setContact(teacher?.name ?? 'Subject teacher')}>
+                                  <MessageCircle size={13} /> {teacher ? `Ask ${teacher.name}` : 'Ask teacher'}
+                                </Button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {open.length === 0 ? (
+                        <EmptyState emoji="✅" title="All homework is handed in" description="Nothing is waiting on your child right now. New work will show up here." />
+                      ) : null}
+                    </SectionCard>
+
+                    <SectionCard title="Recently graded" subtitle="Read the feedback together, not just the score" icon={Star}>
+                      <div className="space-y-2.5">
+                        {graded.map((assignment) => (
+                          <div key={assignment.id} className="flex flex-col gap-2 rounded-xl border border-border/70 p-3 sm:flex-row sm:items-start">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-foreground">{assignment.title}</p>
+                              <p className="text-[10px] text-muted-foreground">{assignment.subject} · {assignment.dueLabel}</p>
+                              {assignment.feedback ? <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{assignment.feedback}</p> : null}
+                            </div>
+                            {assignment.score !== undefined ? (
+                              <span className="shrink-0 rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{assignment.score}/{assignment.points}</span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                      {graded.length === 0 ? <EmptyState emoji="📬" title="No marks back yet" description="Graded work and teacher feedback will appear here." /> : null}
+                    </SectionCard>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <Card className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 text-role-ink">
+                      <Target size={16} />
+                      <p className="text-xs font-bold">The 20-minute routine</p>
+                    </div>
+                    <Badge tone="role">{profile.specialNeeds ? 'Calm pace' : 'At home'}</Badge>
+                  </div>
+                  <ol className="mt-3 space-y-2">
+                    {routine.map((step, index) => (
+                      <li key={step} className="flex gap-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-role-soft text-[10px] font-extrabold text-role-ink">{index + 1}</span>
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                  <Button variant="outline" className="mt-4 w-full" onClick={saveRoutine}>
+                    <Download size={14} /> Save the routine
+                  </Button>
+                </Card>
+
+                <SectionCard title="Need a person?" subtitle="Help is one message away" icon={Users}>
+                  <div className="space-y-2">
+                    {[
+                      { to: '/parent/teachers', label: 'Message a subject teacher', detail: 'Replies within a school day.' },
+                      { to: '/parent/progress', label: 'See the progress report', detail: 'Find the subject that needs practice.' },
+                      profile.specialNeeds
+                        ? { to: '/parent/support', label: 'Open the support plan', detail: 'Goals and specialist notes.' }
+                        : { to: '/parent/messages', label: 'Open all messages', detail: 'Every teacher conversation.' },
+                    ].map((item) => (
+                      <Link key={item.to} to={item.to} className="flex items-center justify-between gap-3 rounded-xl border border-border/70 p-3 transition hover:bg-muted/40">
+                        <span className="min-w-0">
+                          <span className="block text-xs font-bold text-foreground">{item.label}</span>
+                          <span className="block text-[10px] text-muted-foreground">{item.detail}</span>
+                        </span>
+                        <ArrowRight size={14} className="shrink-0 text-muted-foreground" />
+                      </Link>
+                    ))}
+                  </div>
+                </SectionCard>
+
+                <Card className="border-role bg-role-soft/60 p-4">
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-role-ink">
+                    <Lightbulb size={14} /> The goal
+                  </p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-role-ink">
+                    {firstName} should be able to explain the answer to you. If they cannot, message the teacher instead of finishing it for them.
+                  </p>
+                </Card>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <Modal
+        open={Boolean(helpAssignment || helpActivity)}
+        onClose={() => setHelpId(null)}
+        size="md"
+        title={helpAssignment?.title ?? helpActivity?.title ?? 'How to help'}
+        subtitle={
+          helpAssignment
+            ? `${helpAssignment.subject} · ${helpAssignment.points} points · ${helpAssignment.dueLabel}`
+            : helpActivity
+              ? `Suggested at home · ${helpActivity.tag} · ${helpActivity.minutes} minutes`
+              : undefined
+        }
+        footer={
+          helpAssignment ? (
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="ghost" onClick={() => setHelpId(null)}>
+                Close
+              </Button>
+              <Button
+                variant="role"
+                onClick={() => {
+                  const teacher = teacherForHomework(teachers, helpAssignment.subject)
+                  setHelpId(null)
+                  setContact(teacher?.name ?? 'Subject teacher')
+                }}
+              >
+                <MessageCircle size={14} /> Ask the teacher
+              </Button>
+            </div>
+          ) : helpActivity ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="ghost" onClick={() => setHelpId(null)}>
+                Close
+              </Button>
+              {completedIds.includes(helpActivity.id) ? (
+                <Badge tone="success">Already practised</Badge>
+              ) : (
+                <Button variant="role" onClick={() => markPractised(helpActivity)}>
+                  <CheckCircle2 size={14} /> Mark done at home
+                </Button>
+              )}
+            </div>
+          ) : null
+        }
+      >
+        {helpAssignment ? (
+          <div className="space-y-3">
+            <p className="rounded-xl bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">
+              {helpAssignment.instructions ?? helpAssignment.description}
+            </p>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">A 15-minute coaching plan</p>
+              <ol className="mt-2 space-y-2">
+                {[
+                  `Ask ${firstName} to explain the task in their own words.`,
+                  'Read the instructions together and point at what the teacher asked for.',
+                  'Do the first step together, then let them continue alone.',
+                  'Offer a hint if they stall — not the answer.',
+                  'If they are still stuck after 15 minutes, message the teacher.',
+                ].map((step, index) => (
+                  <li key={step} className="flex gap-2.5 rounded-lg border border-border/70 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-role-soft text-[10px] font-extrabold text-role-ink">{index + 1}</span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+            {subjectHomeTip[helpAssignment.subject] ? (
+              <div className="rounded-xl border border-role bg-role-soft/60 p-3">
+                <p className="flex items-start gap-1.5 text-[11px] font-semibold leading-relaxed text-role-ink">
+                  <Lightbulb size={14} className="mt-0.5 shrink-0" />
+                  {subjectHomeTip[helpAssignment.subject]}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : helpActivity ? (
+          <div className="space-y-3">
+            <p className="rounded-xl bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">{helpActivity.description}</p>
+            <ol className="space-y-2">
+              {helpActivity.steps.map((step, index) => (
+                <li key={step} className="flex gap-2.5 rounded-lg border border-border/70 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-role-soft text-[10px] font-extrabold text-role-ink">{index + 1}</span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <p className="text-[10px] text-muted-foreground">Go at their pace. Stop while it still feels easy and finish with praise.</p>
+          </div>
+        ) : null}
+      </Modal>
+
+      <ComposeMessageModal
+        open={Boolean(contact)}
+        onClose={() => setContact(null)}
+        to={contact ?? ''}
+        subtitle={`Homework help · ${profile.name}`}
+        audience="parent"
+        author={author}
+        emoji="👪"
+      />
+    </RoleLayout>
+  )
+}
+
 export function ParentTeachers() {
   const { child, setChild, list, profile } = useParentChildren()
   const { profile: account } = useAuth()
@@ -838,18 +1307,33 @@ export function ParentTeachers() {
   )
 }
 
+function addMonth(from: Date) {
+  const next = new Date(from)
+  const day = next.getDate()
+  next.setMonth(next.getMonth() + 1)
+  if (next.getDate() < day) next.setDate(0)
+  return next
+}
+
 /**
  * Next renewal is one calendar month after each charge. Renewals are not written
  * to the ledger, so roll forward until the date is in the future.
  */
 function nextRenewal(from: Date) {
-  const next = new Date(from)
-  for (let i = 0; i < 240 && next.getTime() <= Date.now(); i += 1) {
-    const day = next.getDate()
-    next.setMonth(next.getMonth() + 1)
-    if (next.getDate() < day) next.setDate(0)
-  }
+  let next = new Date(from)
+  for (let i = 0; i < 240 && next.getTime() <= Date.now(); i += 1) next = addMonth(next)
   return next
+}
+
+/** The billing period that contains today, starting from the last charge date. */
+function currentPeriod(anchor: Date) {
+  let start = new Date(anchor)
+  let end = addMonth(start)
+  for (let i = 0; i < 240 && end.getTime() <= Date.now(); i += 1) {
+    start = end
+    end = addMonth(start)
+  }
+  return { start, end }
 }
 
 export function ParentSubscriptions() {
@@ -1263,12 +1747,12 @@ export function ParentBilling() {
   const lastPayment = childPayments[0] ?? null
   // Seeded demo families have a billing record but no Paystack row, so their
   // validity comes from that record until a real charge exists.
-  const start = lastPayment
+  const anchor = lastPayment
     ? new Date(lastPayment.created_at)
     : demoHistory.length
       ? new Date(demoHistory[0].date)
       : new Date(new Date().getFullYear(), new Date().getMonth() - 1, 12)
-  const end = nextRenewal(start)
+  const { start, end } = currentPeriod(anchor)
   const autoRenews = Boolean(lastPayment) || demoHistory.length > 0 || !paymentsConfigured
 
   const receipts = childPayments.length

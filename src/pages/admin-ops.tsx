@@ -1640,7 +1640,7 @@ export function AdminSettings() {
         <SectionCard title="Team access" subtitle="People who can act in this console" icon={Users}>
           <div className="space-y-2.5">
             {[
-              { name: 'Zainab Yusuf', role: 'Super Admin', email: 'admin.demo@example.com', active: true },
+              { name: 'Zainab Yusuf', role: 'Super Admin', email: 'zainab.yusuf@neurobloom.ng', active: true },
               { name: 'Ade Martins', role: 'Admin · Finance', email: 'ade.martins@neurobloom.ng', active: true },
               { name: 'Grace Okafor', role: 'Support admin', email: 'grace.okafor@neurobloom.ng', active: true },
               { name: 'Kunle Adebayo', role: 'Admin · Product', email: 'kunle.adebayo@neurobloom.ng', active: false },
