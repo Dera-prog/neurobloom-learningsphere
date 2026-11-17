@@ -127,26 +127,15 @@ async function applyPlanToState(userId, childId, planId) {
   })
 }
 
-async function applyParentAccessToState(userId, childId) {
+async function applyParentAccessToState(userId, childId, until) {
   const state = await readUserState(userId)
-  const childPlan = state.plans?.[childId]
-  if (!PREMIUM_PLANS.has(childPlan)) {
-    return { ok: false, reason: 'not_eligible' }
-  }
-  const existing = state.parentAccess?.[childId]
-  if (existing?.active && existing.until && new Date(existing.until) > new Date()) {
-    return { ok: true, duplicate: true }
-  }
-  const until = new Date()
-  until.setMonth(until.getMonth() + 1)
-  const write = await writeUserState(userId, {
+  return writeUserState(userId, {
     ...state,
     parentAccess: {
       ...(state.parentAccess || {}),
-      [childId]: { active: true, until: until.toISOString() },
+      [childId]: { active: true, until },
     },
   })
-  return write.ok ? { ok: true, duplicate: false } : { ok: false, reason: 'state_write_failed' }
 }
 
 export async function readUserState(userId) {
@@ -160,6 +149,138 @@ async function writeUserState(userId, state) {
     prefer: 'resolution=merge-duplicates,return=minimal',
     body: { user_id: userId, state, updated_at: new Date().toISOString() },
   })
+}
+
+// ---------------------------------------------------------------------------
+// Entitlements
+//
+// The subscriptions table is the source of truth: only this module (using the
+// service role) writes it. The user_state mirror is kept for the mobile app,
+// which reads plans from the synced state.
+// ---------------------------------------------------------------------------
+
+function subscriptionFilter({ userId, childId, extra = '' }) {
+  return `user_id=eq.${encodeURIComponent(userId)}&child_slot=eq.${encodeURIComponent(childId)}${extra}`
+}
+
+function oneMonthFrom(value) {
+  const start = value ? new Date(value) : new Date()
+  const end = new Date(start)
+  end.setMonth(end.getMonth() + 1)
+  return { start, end }
+}
+
+async function activePlanRow(userId, childId) {
+  const result = await rest(
+    `/rest/v1/subscriptions?select=id,plan_id,reference,current_period_end&${subscriptionFilter({
+      userId,
+      childId,
+      extra: '&status=eq.active&plan_id=neq.parent_access&limit=1',
+    })}`,
+  )
+  return Array.isArray(result.data) ? result.data[0] ?? null : null
+}
+
+async function cancelActivePlan(userId, childId) {
+  return rest(
+    `/rest/v1/subscriptions?${subscriptionFilter({
+      userId,
+      childId,
+      extra: '&status=eq.active&plan_id=neq.parent_access',
+    })}`,
+    {
+      method: 'PATCH',
+      prefer: 'return=minimal',
+      body: { status: 'cancelled', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    },
+  )
+}
+
+async function activateSubscription({ userId, childId, planId, reference, amount, paidAt }) {
+  const { start, end } = oneMonthFrom(paidAt)
+  const existing = await rest(
+    `/rest/v1/subscriptions?select=id&${subscriptionFilter({
+      userId,
+      childId,
+      extra: `&plan_id=neq.parent_access&reference=eq.${encodeURIComponent(reference)}&limit=1`,
+    })}`,
+  )
+  const row = Array.isArray(existing.data) ? existing.data[0] : null
+  if (row) {
+    await cancelActivePlan(userId, childId)
+    return rest(`/rest/v1/subscriptions?id=eq.${encodeURIComponent(row.id)}`, {
+      method: 'PATCH',
+      prefer: 'return=minimal',
+      body: {
+        status: 'active',
+        cancelled_at: null,
+        amount: Math.round(Number(amount) || 0),
+        current_period_end: end.toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    })
+  }
+  await cancelActivePlan(userId, childId)
+  return rest('/rest/v1/subscriptions', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: {
+      user_id: userId,
+      child_slot: childId,
+      plan_id: planId,
+      status: 'active',
+      source: 'paystack',
+      reference,
+      amount: Math.round(Number(amount) || 0),
+      started_at: start.toISOString(),
+      current_period_end: end.toISOString(),
+    },
+  })
+}
+
+async function activateParentAccess(userId, childId) {
+  const plan = await activePlanRow(userId, childId)
+  if (!plan || !PREMIUM_PLANS.has(plan.plan_id)) {
+    return { ok: false, reason: 'not_eligible' }
+  }
+
+  const existing = await rest(
+    `/rest/v1/subscriptions?select=id,current_period_end&${subscriptionFilter({
+      userId,
+      childId,
+      extra: '&status=eq.active&plan_id=eq.parent_access&limit=1',
+    })}`,
+  )
+  const row = Array.isArray(existing.data) ? existing.data[0] : null
+  if (row?.current_period_end && new Date(row.current_period_end) > new Date()) {
+    return { ok: true, duplicate: true }
+  }
+
+  const { end } = oneMonthFrom()
+  if (row) {
+    await rest(`/rest/v1/subscriptions?id=eq.${encodeURIComponent(row.id)}`, {
+      method: 'PATCH',
+      prefer: 'return=minimal',
+      body: { status: 'cancelled', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    })
+  }
+  const write = await rest('/rest/v1/subscriptions', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: {
+      user_id: userId,
+      child_slot: childId,
+      plan_id: 'parent_access',
+      status: 'active',
+      source: 'paystack',
+      amount: 0,
+      started_at: new Date().toISOString(),
+      current_period_end: end.toISOString(),
+    },
+  })
+  if (!write.ok) return { ok: false, reason: 'entitlement_write_failed' }
+  await applyParentAccessToState(userId, childId, end.toISOString())
+  return { ok: true, duplicate: false }
 }
 
 function planCodeOf(planId) {
@@ -251,43 +372,40 @@ export async function activatePlan({ userId, childId, planId, reference, amount,
     return { ok: false, reason: 'invalid_target' }
   }
   if (isAddonPlan(planId)) {
-    return applyParentAccessToState(userId, childId)
+    return activateParentAccess(userId, childId)
   }
 
   const existing = await rest(
-    `/rest/v1/payments?select=id,plan_id&reference=eq.${encodeURIComponent(reference)}`,
+    `/rest/v1/payments?select=id&reference=eq.${encodeURIComponent(reference)}`,
   )
-  if (Array.isArray(existing.data) && existing.data.length) {
-    // The charge is already banked; make sure the plan stuck even if a stale
-    // client autosave overwrote it after the webhook ran.
-    const reapplied = await applyPlanToState(userId, childId, planId)
-    if (!reapplied.ok) return { ok: false, reason: 'state_write_failed' }
-    await safeReconcile({ userId, email })
-    return { ok: true, duplicate: true }
+  const duplicate = Array.isArray(existing.data) && existing.data.length > 0
+
+  const entitlement = await activateSubscription({ userId, childId, planId, reference, amount, paidAt })
+  if (!entitlement.ok) return { ok: false, reason: 'entitlement_write_failed' }
+
+  // Mirror for the mobile app and keep the ledger idempotent by reference.
+  await applyPlanToState(userId, childId, planId)
+  if (!duplicate) {
+    await rest('/rest/v1/payments', {
+      method: 'POST',
+      prefer: 'return=minimal',
+      body: {
+        user_id: userId,
+        child_id: childId,
+        plan_id: planId,
+        reference,
+        amount: Math.round(Number(amount) || 0),
+        channel: channel || null,
+        status: 'success',
+        paid_at: paidAt ? new Date(paidAt).toISOString() : new Date().toISOString(),
+        raw: raw ?? null,
+      },
+    })
   }
-
-  const write = await applyPlanToState(userId, childId, planId)
-  if (!write.ok) return { ok: false, reason: 'state_write_failed' }
-
-  const ledger = await rest('/rest/v1/payments', {
-    method: 'POST',
-    prefer: 'return=minimal',
-    body: {
-      user_id: userId,
-      child_id: childId,
-      plan_id: planId,
-      reference,
-      amount: Math.round(Number(amount) || 0),
-      channel: channel || null,
-      status: 'success',
-      paid_at: paidAt ? new Date(paidAt).toISOString() : new Date().toISOString(),
-      raw: raw ?? null,
-    },
-  })
 
   await safeReconcile({ userId, email })
 
-  return { ok: true, duplicate: false, ledgerWritten: ledger.ok }
+  return { ok: true, duplicate }
 }
 
 export function siteUrl(req) {

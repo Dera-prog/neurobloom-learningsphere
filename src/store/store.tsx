@@ -31,6 +31,7 @@ import {
   type TutorRequest,
 } from '../data/content'
 import { useAuth } from '../lib/auth'
+import { loadEntitlements } from '../lib/entitlements'
 import { clearOnboardingPending, hasPendingOnboarding } from '../lib/onboarding'
 import {
   CHILD_SLOTS,
@@ -496,11 +497,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setReady(false)
 
     async function hydrate(id: string) {
-      const { data, error } = await supabase!
-        .from('user_state')
-        .select('state')
-        .eq('user_id', id)
-        .maybeSingle()
+      const [{ data, error }, entitlements] = await Promise.all([
+        supabase!
+          .from('user_state')
+          .select('state')
+          .eq('user_id', id)
+          .maybeSingle(),
+        loadEntitlements(),
+      ])
       if (cancelled) return
 
       const stored = !error && data ? (data.state as Partial<AppState> | null) : null
@@ -508,7 +512,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       // A signup marker plus no saved state means this is the account's first run.
       const firstRun = !hasState && hasPendingOnboarding(id)
       const signupChildren = !hasState && firstRun ? takeSignupChildren(email) : []
-      const next = hasState
+      const hydrated = hasState
         ? normalizeState(stored as Partial<AppState>)
         : {
             ...makeInitialState(),
@@ -516,6 +520,21 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             newAccount: firstRun,
             onboarding: { complete: !firstRun, steps: [] },
           }
+      // Plans and the Parent Access add-on belong to the subscriptions table.
+      // The blob keeps a copy for the mobile app, but it must not decide access.
+      const next = entitlements
+        ? {
+            ...hydrated,
+            plans: {
+              tunde: entitlements.plans.tunde ?? 'general',
+              chidi: entitlements.plans.chidi ?? 'general',
+            },
+            parentAccess: {
+              tunde: entitlements.parentAccess.tunde ?? { active: false, until: null },
+              chidi: entitlements.parentAccess.chidi ?? { active: false, until: null },
+            },
+          }
+        : hydrated
 
       // Do not write here: an eager snapshot of the first-run state can land
       // after the user finishes setup and overwrite it. Leaving syncedRef empty
