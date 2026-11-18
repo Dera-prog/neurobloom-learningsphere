@@ -1,4 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto'
+import { emailConfigured, sendEmail } from './_email.js'
+import { sendSms, smsConfigured } from './_sms.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_RE = /^\+?[0-9][0-9\s()-]{6,19}$/
@@ -117,34 +119,14 @@ function codeEmail(learnerName, code) {
   }
 }
 
-async function sendEmail({ recipient, learnerName, code }) {
-  const mailgunKey = process.env.MAILGUN_API_KEY || ''
-  const mailgunDomain = process.env.MAILGUN_DOMAIN || ''
-  if (!mailgunKey || !mailgunDomain) return { delivered: false }
-
+async function sendEmailCode({ recipient, learnerName, code }) {
   const message = codeEmail(learnerName, code)
-  const form = new URLSearchParams()
-  form.set('from', process.env.MAILGUN_FROM || `NeuroBloom <noreply@${mailgunDomain}>`)
-  form.set('to', recipient)
-  form.set('subject', message.subject)
-  form.set('text', message.text)
-  form.set('html', message.html)
-  if (process.env.MAILGUN_REPLY_TO) form.set('h:Reply-To', process.env.MAILGUN_REPLY_TO)
+  return sendEmail({ to: recipient, ...message })
+}
 
-  const base = process.env.MAILGUN_BASE_URL || `https://api.mailgun.net/v3/${mailgunDomain}/messages`
-  try {
-    const response = await fetch(base, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${Buffer.from(`api:${mailgunKey}`).toString('base64')}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: form.toString(),
-    })
-    return { delivered: response.ok }
-  } catch {
-    return { delivered: false }
-  }
+function codeSms(learnerName, code) {
+  const learner = clean(learnerName, 40) || 'your child'
+  return `NeuroBloom: ${code} is the verification code for ${learner}. Share it to finish sign-up. Expires in 10 minutes.`
 }
 
 export default async function handler(req, res) {
@@ -197,18 +179,22 @@ export default async function handler(req, res) {
     const expires = Date.now() + CODE_TTL_MS
     const token = makeToken(contact.value, expires, code)
 
-    const mailgunConfigured = Boolean(process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN)
+    const channel = contact.kind
+    const configured = channel === 'email' ? emailConfigured() : smsConfigured()
     const delivery =
-      contact.kind === 'email'
-        ? await sendEmail({ recipient: contact.value, learnerName: body.learnerName, code })
-        : { delivered: false }
+      channel === 'email'
+        ? await sendEmailCode({ recipient: contact.value, learnerName: body.learnerName, code })
+        : await sendSms({ to: contact.value, text: codeSms(body.learnerName, code) })
 
     // Once a real sender is connected, a failed send must never fall back to
     // showing the code in the response.
-    if (contact.kind === 'email' && mailgunConfigured && !delivery.delivered) {
+    if (configured && !delivery.delivered) {
       return res.status(502).json({
         error: 'send_failed',
-        message: 'We could not send the code. Try again in a moment.',
+        message:
+          channel === 'email'
+            ? 'We could not send the code. Try again in a moment.'
+            : 'We could not send the SMS. Try again in a moment.',
       })
     }
 
@@ -219,12 +205,14 @@ export default async function handler(req, res) {
       ok: true,
       sent: delivery.delivered,
       review,
+      channel,
+      provider: delivery.provider ?? null,
       token,
       expiresAt: new Date(expires).toISOString(),
       ...(review ? { code } : {}),
       message: delivery.delivered
         ? `Code sent to ${contact.value}.`
-        : 'No email or SMS provider is connected yet, so nothing was sent.',
+        : `No ${channel === 'email' ? 'email' : 'SMS'} provider is connected yet, so nothing was sent.`,
     })
   }
 

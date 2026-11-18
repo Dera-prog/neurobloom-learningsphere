@@ -17,6 +17,7 @@ import {
 import { PaymentCallbackPage } from './pages/PaymentCallback'
 import { SuperAdminConsole } from './pages/super-admin-console'
 import { ParentAccessRegisterPage } from './pages/ParentAccessRegister'
+import { ChildSafety, PrivacyPolicy, TermsOfService } from './pages/Legal'
 import { RequireRole } from './components/guards'
 import type { Audience } from './data/content'
 import {
@@ -227,6 +228,9 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
+        <Route path="/child-safety" element={<ChildSafety />} />
         <Route path="/ops-admin" element={<OpsAdminLandingPage />} />
         <Route path="/super-admin" element={<SuperAdminLandingPage />} />
         <Route path="/super-admin/sign-in" element={<SuperAdminSignInPage />} />

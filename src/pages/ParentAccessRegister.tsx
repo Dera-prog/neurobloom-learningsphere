@@ -192,6 +192,7 @@ export function ParentAccessRegisterPage() {
   const [plan, setPlan] = useState<PlanId>('premium')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [consent, setConsent] = useState(false)
   const [sentTo, setSentTo] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
 
@@ -218,6 +219,10 @@ export function ParentAccessRegisterPage() {
     }
     if (!child) {
       setError('Choose the learner this subscription is for.')
+      return
+    }
+    if (!consent) {
+      setError('Agree to the Terms of Service and Privacy Policy to continue.')
       return
     }
 
@@ -547,6 +552,26 @@ export function ParentAccessRegisterPage() {
               <FormError>{error}</FormError>
             </div>
           ) : null}
+
+          <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(event) => setConsent(event.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+            />
+            <span className="text-[10px] leading-relaxed text-muted-foreground">
+              I agree to the{' '}
+              <Link to="/terms" className="font-semibold text-primary hover:underline">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="font-semibold text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              , and I consent to NeuroBloom holding my child’s learning data.
+            </span>
+          </label>
 
           <Button type="submit" size="lg" className="mt-4 w-full" disabled={busy}>
             {busy ? 'Creating your account…' : `Create account & pay ${naira(chosen.price)}`}

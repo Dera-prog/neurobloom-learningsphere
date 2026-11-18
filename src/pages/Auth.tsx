@@ -168,12 +168,23 @@ function AuthShell({ children }: { children: ReactNode }) {
           </Link>
           {children}
         </div>
-        <p className="mx-auto mt-8 w-full max-w-md text-[10px] text-muted-foreground">
-          © {new Date().getFullYear()} NeuroBloom LearningSphere · Need help?{' '}
-          <a href="mailto:support@neurobloom.ng" className="inline-block px-1 py-2 font-semibold text-primary hover:underline">
+        <div className="mx-auto mt-8 flex w-full max-w-md flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+          <span>© {new Date().getFullYear()} NeuroBloom LearningSphere · Need help?</span>
+          <a href="mailto:support@neurobloom.ng" className="inline-block py-2 font-semibold text-primary hover:underline">
             Contact support
           </a>
-        </p>
+          <span className="flex items-center gap-x-3">
+            <Link to="/privacy" className="inline-block py-2 hover:text-foreground">
+              Privacy
+            </Link>
+            <Link to="/terms" className="inline-block py-2 hover:text-foreground">
+              Terms
+            </Link>
+            <Link to="/child-safety" className="inline-block py-2 hover:text-foreground">
+              Child safety
+            </Link>
+          </span>
+        </div>
       </main>
     </div>
   )
@@ -1357,6 +1368,7 @@ export function SignupPage() {
   const [reportError, setReportError] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [consent, setConsent] = useState(false)
   const [sentTo, setSentTo] = useState('')
   const [otpCode, setOtpCode] = useState('')
   const [otpToken, setOtpToken] = useState('')
@@ -1407,6 +1419,7 @@ export function SignupPage() {
         token?: string
         code?: string
         review?: boolean
+        channel?: 'email' | 'phone'
         message?: string
       }
       if (!response.ok || !payload.token) {
@@ -1420,7 +1433,7 @@ export function SignupPage() {
       setResendIn(30)
       setOtpNotice(
         payload.review && payload.code
-          ? `Demo mode — no email or SMS provider is connected yet, so no message was sent. Use code ${payload.code}.`
+          ? `Demo mode — no ${payload.channel === 'phone' ? 'SMS' : 'email'} provider is connected yet, so no message was sent. Use code ${payload.code}.`
           : `Code sent to ${guardianContact}. Ask your parent or guardian to share it, then enter it below.`,
       )
     } catch {
@@ -1542,6 +1555,10 @@ export function SignupPage() {
     }
     if (password.length < 8) {
       setError('Use a password of at least 8 characters.')
+      return
+    }
+    if (!consent) {
+      setError('Agree to the Terms of Service and Privacy Policy to continue.')
       return
     }
 
@@ -1762,7 +1779,12 @@ export function SignupPage() {
                   </h2>
                   <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
                     A parent or guardian confirms this account. We’ll send a 6-digit code to the contact above for
-                    them to share with you.
+                    them to share with you. Sharing it confirms their consent to NeuroBloom holding your learning
+                    data —{' '}
+                    <Link to="/child-safety" className="font-semibold text-primary hover:underline">
+                      child safety
+                    </Link>
+                    .
                   </p>
                 </div>
                 {otpVerified ? (
@@ -2044,6 +2066,30 @@ export function SignupPage() {
               </div>
             </section>
           ) : null}
+
+          <label className="flex items-start gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(event) => setConsent(event.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary"
+            />
+            <span className="text-[10px] leading-relaxed text-muted-foreground">
+              I agree to the{' '}
+              <Link to="/terms" className="font-semibold text-primary hover:underline">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link to="/privacy" className="font-semibold text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              {isLearner
+                ? ', and I confirm my parent or guardian has agreed to this account.'
+                : isParent
+                  ? ', and I consent to NeuroBloom holding my children’s learning data.'
+                  : '.'}
+            </span>
+          </label>
 
           {error ? <ErrorNote>{error}</ErrorNote> : null}
 

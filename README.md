@@ -86,6 +86,20 @@ Secondary pages per portal:
 - When Supabase keys are absent the app runs in **demo mode**: the marketing site and dashboards
   render from in-memory seed data, and auth screens explain that accounts are not connected.
 
+### Privacy, terms and consent
+
+`/privacy`, `/terms` and `/child-safety` are written against what the product actually stores —
+Supabase project data (eu-central-1), Vercel hosting, Paystack billing, the email/SMS providers, the
+private verification bucket and the relationship-enforced messaging model — and the landing and auth
+footers link to all three. Both account-creation flows (student/teacher signup and Parent Access
+registration) require an explicit consent tick that links to the Terms and Privacy Policy.
+
+Under-18 signup sends a six-digit code to a guardian's email or phone (`/api/guardian-otp`); that
+code is the recorded consent. The code is HMAC-signed, expires in ten minutes and allows three sends
+per ten minutes. When neither Resend/Mailgun nor Termii is configured the endpoint answers in review
+mode and returns the code for QA only; once a provider is configured a failed send is a hard error,
+never a fallback that exposes the code.
+
 ### Teacher complaint box
 
 The teacher sidebar has a "Send a complaint" form with a category picker. Submitting stores a
@@ -131,8 +145,8 @@ does not bounce back to sign-in.
 - **lucide-react** icons, **Recharts** for admin charts
 - **Supabase** for auth, Postgres and row-level security
 - **Paystack** for subscriptions and one-off charges (Vercel functions in `api/`)
-- **Mailgun** for confirmation email (optional; the endpoint reports `email_not_configured` until
-  credentials exist)
+- **Resend** or **Mailgun** for transactional email and **Termii** for SMS sign-up codes (optional;
+  signup consent codes fall back to a review mode until credentials exist)
 - **pnpm 9** for dependencies; **Vercel** for hosting
 
 ## Architecture
@@ -149,9 +163,13 @@ src/
   index.css          Tailwind entry and every theme token block
 api/
   paystack/          initialize, verify, webhook (+ _shared helpers)
-  send-email.js      Mailgun sender
+  _email.js          provider-agnostic email transport (Resend or Mailgun)
+  _sms.js            Termii SMS transport
+  guardian-otp.js    guardian consent codes for under-18 signup
+  send-email.js      plan, booking and support notifications
+  health.js          which providers are configured (booleans only)
 supabase/migrations  schema, RLS policies and payments table
-scripts/             one-off admin/paystack/mailgun/activation helpers
+scripts/             admin/paystack/activation/email/SMS helpers
 ```
 
 Key conventions:
@@ -195,7 +213,8 @@ Utility scripts (they read server keys from `.secrets/supabase.env`, never from 
 ```bash
 pnpm grant:admin -- someone@example.com     # grant or revoke the admin role
 pnpm paystack:setup                          # create Paystack test plans
-pnpm check:mailgun                           # verify Mailgun configuration
+pnpm check:email you@example.com             # verify Resend or Mailgun delivery
+pnpm check:sms 08030000000                   # verify Termii delivery
 pnpm activate                                # apply Supabase activation steps
 ```
 
@@ -225,8 +244,15 @@ When the Supabase pair is missing the app runs in demo mode.
 | `PAYSTACK_PLAN_SPECIAL` | Paystack plan code for Special Needs Premium (₦22,000) |
 | `PAYSTACK_PLAN_PARENT_ACCESS` | Plan code for the ₦2,500 Parent Access add-on (optional — one-off if unset) |
 | `SITE_URL` | Public origin used to build Paystack callback URLs (falls back to the request host) |
-| `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM` | Mailgun sender |
+| `RESEND_API_KEY` | Resend sender; takes precedence over Mailgun when set |
+| `EMAIL_FROM`, `EMAIL_REPLY_TO` | Sender and reply address shared by both email providers |
+| `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM` | Mailgun sender (used when Resend is unset) |
 | `MAILGUN_BASE_URL`, `MAILGUN_REPLY_TO` | Optional Mailgun overrides |
+| `TERMII_API_KEY` | Termii sender for guardian sign-up codes |
+| `TERMII_SENDER_ID`, `TERMII_CHANNEL`, `TERMII_BASE_URL` | Optional Termii overrides |
+
+`/api/health` reports `{ payments, email, emailProvider, sms, smsProvider }` — booleans and provider
+names only, never key values.
 
 Never prefix a secret with `VITE_` — those values are shipped to the browser. The `.secrets/`
 folder and every `.env*` file except `.env.example` are git-ignored.
@@ -355,6 +381,23 @@ vercel --prod
 above as Vercel environment variables, plus the three client variables at build time. Verify a
 change by loading the deployed URL, not only the dev server.
 
+### Installable app (PWA)
+
+The production build is an installable Progressive Web App. `public/manifest.webmanifest`
+declares the name, colours and the 192 / 512 / maskable icons; `public/sw.js` precaches the app
+shell and serves hashed assets stale-while-revalidate, so the shell still opens offline (live
+data still needs a connection). `src/main.tsx` registers the worker in production only. The
+landing header shows an **Install app** button when the browser fires `beforeinstallprompt`;
+iPhone Safari gets Add-to-Home-Screen steps instead, and both hide once the app runs standalone.
+
+`vercel.json` serves `/sw.js` and the manifest with `no-cache` so a deploy is picked up on the
+next visit. Verify with the PWA suite (17 checks: manifest parse, installability, worker
+control, offline shell):
+
+```bash
+BASE=https://neurobloom-learningsphere.vercel.app node .shots/check-pwa.mjs
+```
+
 ## Quality checks
 
 ```bash
@@ -375,10 +418,11 @@ Manual smoke path for a release:
 
 ## Known limitations
 
-- Phone OTP and social sign-in are not built — they need an SMS or OAuth provider.
+- General phone sign-in and social sign-in are not built — they need an SMS-OTP or OAuth provider.
+  (Guardian consent codes during signup do send by email or SMS once a provider is configured.)
 - Video is simulated UI; there is no real streaming or recording backend.
-- Mailgun delivery needs an API key and domain; until then the email endpoint answers
-  `email_not_configured` and messages are stored in-app only.
+- Email and SMS need a provider key; until one exists, guardian signup runs in review mode and
+  `/api/send-email` answers `email_not_configured`, so notifications stay in-app only.
 - Admin modules persist locally per browser rather than in Postgres.
 - Physical-phone testing is manual.
 
@@ -386,11 +430,11 @@ Manual smoke path for a release:
 
 ```
 .env.example             client and server variable names (no values)
-api/                     Vercel functions: Paystack + Mailgun
-scripts/                 admin grant, Paystack setup, Mailgun check, Supabase activation
+api/                     Vercel functions: Paystack, email, SMS, consent codes, health
+scripts/                 admin grant, Paystack setup, email/SMS checks, Supabase activation
 supabase/migrations/     schema and RLS policies
-src/pages/               Landing, Auth, ParentAccessRegister, per-role portals, admin-ops
-src/components/          layout, UI kit, charts, chat, lessons, onboarding, guards, toast
+src/pages/               Landing, Auth, ParentAccessRegister, Legal, per-role portals, admin-ops
+src/components/          layout, UI kit, charts, chat, lessons, onboarding, guards, toast, install
 src/store/               app store with hydration and autosave
 src/lib/                 auth, supabase, payments, complaints, onboarding, email
 src/data/                seed content, admin operations data, curriculum

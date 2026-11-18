@@ -12,6 +12,7 @@ import {
 import { landingRoles, roleConfigs } from '../config/roles'
 import { parentAccessAddon, plans } from '../data/content'
 import { buttonStyles } from '../components/ui'
+import { InstallAppButton } from '../components/install'
 import { cn, naira } from '../lib/utils'
 import { STORAGE_KEY } from '../store/store'
 import { useAuth } from '../lib/auth'
@@ -44,6 +45,7 @@ export default function Landing() {
             </a>
           </div>
           <div className="flex items-center gap-2">
+            <InstallAppButton />
             <Link to="/login" className={buttonStyles('outline', 'md', 'px-5')}>
               Sign in
             </Link>
@@ -315,6 +317,9 @@ export default function Landing() {
             <a href="#dashboards" className="inline-flex items-center py-2 hover:text-foreground">Dashboards</a>
             <a href="#plans" className="inline-flex items-center py-2 hover:text-foreground">Plans</a>
             <a href="#mission" className="inline-flex items-center py-2 hover:text-foreground">About</a>
+            <Link to="/privacy" className="inline-flex items-center py-2 hover:text-foreground">Privacy</Link>
+            <Link to="/terms" className="inline-flex items-center py-2 hover:text-foreground">Terms</Link>
+            <Link to="/child-safety" className="inline-flex items-center py-2 hover:text-foreground">Child safety</Link>
             {configured ? (
               signedIn ? (
                 <button type="button" onClick={() => void signOut()} className="inline-flex items-center py-2 hover:text-foreground">

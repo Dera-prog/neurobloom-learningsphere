@@ -1,0 +1,21 @@
+{
+  "name": "NeuroBloom LearningSphere",
+  "short_name": "NeuroBloom",
+  "description": "Inclusive learning for junior and senior secondary students, with specialist support for ASD and ADHD learners.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#f8f7ff",
+  "theme_color": "#6c3fc5",
+  "lang": "en-NG",
+  "dir": "ltr",
+  "categories": ["education"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -7,6 +7,12 @@ import { ToastProvider } from './components/toast'
 import { AuthProvider } from './lib/auth'
 import './index.css'
 
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+  })
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

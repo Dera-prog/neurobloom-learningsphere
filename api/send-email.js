@@ -1,3 +1,5 @@
+import { emailConfigured, sendEmail } from './_email.js'
+
 const ALLOWED_KINDS = new Set(['plan', 'booking', 'support'])
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const RATE_LIMIT = 3
@@ -196,14 +198,12 @@ export default async function handler(req, res) {
 
   const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '')
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-  const mailgunKey = process.env.MAILGUN_API_KEY || ''
-  const mailgunDomain = process.env.MAILGUN_DOMAIN || ''
 
-  if (!mailgunKey || !mailgunDomain) {
+  if (!emailConfigured()) {
     return res.status(503).json({
       error: 'email_not_configured',
       skipped: true,
-      message: 'Saved. Email delivery will start as soon as Mailgun is connected.',
+      message: 'Saved. Email delivery will start as soon as an email provider is connected.',
     })
   }
   if (!supabaseUrl || !serviceKey) {
@@ -252,51 +252,33 @@ export default async function handler(req, res) {
   }
 
   const message = buildMessage(kind, data)
-  const form = new URLSearchParams()
-  form.set('from', process.env.MAILGUN_FROM || `NeuroBloom <noreply@${mailgunDomain}>`)
-  form.set('to', recipient)
-  form.set('subject', message.subject)
-  form.set('text', message.text)
-  form.set('html', message.html)
-  if (process.env.MAILGUN_REPLY_TO) form.set('h:Reply-To', process.env.MAILGUN_REPLY_TO)
+  const result = await sendEmail({ to: recipient, ...message })
 
-  const base = process.env.MAILGUN_BASE_URL || `https://api.mailgun.net/v3/${mailgunDomain}/messages`
-  try {
-    const response = await fetch(base, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${Buffer.from(`api:${mailgunKey}`).toString('base64')}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: form.toString(),
-    })
-
-    if (!response.ok) {
-      const detail = clean(await response.text(), 300)
-      await logEmail({ supabaseUrl, serviceKey, userId: user.id, recipient, kind, status: 'failed', detail })
-      return res.status(502).json({
-        error: 'send_failed',
-        message: 'The confirmation email could not be delivered. Your action was saved.',
-      })
-    }
-
-    const result = await response.json().catch(() => ({}))
+  if (!result.delivered) {
     await logEmail({
       supabaseUrl,
       serviceKey,
       userId: user.id,
       recipient,
       kind,
-      status: 'sent',
-      detail: clean(result.id, 120) || null,
+      status: 'failed',
+      detail: clean(result.error || result.provider, 200) || null,
     })
-
-    return res.status(200).json({ ok: true, sent: true, message: `Confirmation sent to ${recipient}.` })
-  } catch {
-    await logEmail({ supabaseUrl, serviceKey, userId: user.id, recipient, kind, status: 'failed', detail: 'network error' })
     return res.status(502).json({
-      error: 'network_error',
-      message: 'Could not reach the email service. Your action was saved.',
+      error: result.error === 'email_not_configured' ? 'email_not_configured' : 'send_failed',
+      message: 'The confirmation email could not be delivered. Your action was saved.',
     })
   }
+
+  await logEmail({
+    supabaseUrl,
+    serviceKey,
+    userId: user.id,
+    recipient,
+    kind,
+    status: 'sent',
+    detail: clean(result.id || result.provider, 120) || null,
+  })
+
+  return res.status(200).json({ ok: true, sent: true, message: `Confirmation sent to ${recipient}.` })
 }

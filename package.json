@@ -10,7 +10,8 @@
     "typecheck": "tsc -b --noEmit",
     "activate": "node scripts/activate-supabase.mjs",
     "paystack:setup": "node scripts/paystack-setup.mjs",
-    "check:mailgun": "node scripts/check-mailgun.mjs",
+    "check:email": "node scripts/check-email.mjs",
+    "check:sms": "node scripts/check-sms.mjs",
     "grant:admin": "node scripts/grant-admin.mjs"
   },
   "dependencies": {
