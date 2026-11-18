@@ -89,6 +89,8 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Account deletion and other server-side cascades run without a JWT role.
+  if auth.role() is null then return new; end if;
   if auth.role() = 'service_role' then return new; end if;
 
   if tg_op = 'INSERT' then
@@ -140,6 +142,8 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Account deletion and other server-side cascades run without a JWT role.
+  if auth.role() is null then return new; end if;
   if auth.role() = 'service_role' then return new; end if;
 
   if tg_op = 'INSERT' then

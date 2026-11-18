@@ -233,7 +233,7 @@ folder and every `.env*` file except `.env.example` are git-ignored.
 
 ## Database
 
-Apply `supabase/migrations/0001` → `0011` to a Supabase project (SQL editor or CLI):
+Apply `supabase/migrations/0001` → `0012` to a Supabase project (SQL editor or CLI):
 
 - `profiles` — one row per account: full name, phone, role (fixed by RLS), created_at.
 - `user_state` — per-user JSON blob for the whole app state, with self read/insert/update policies.
@@ -283,6 +283,17 @@ Apply `supabase/migrations/0001` → `0011` to a Supabase project (SQL editor or
   reviewer name and time are stamped by the database — that is the reply the requester sees. The
   teacher sidebar box and the parent Special Support form file tickets; `/admin/support` lists the
   queue, replies and status changes. `src/lib/support.ts` is the client path.
+- Conversations and messages (0012) are `conversations`, `conversation_members` and `chat_messages`.
+  A thread exists only between two accounts that already have a relationship: a guardian and the
+  teacher of a class their child is enrolled in, a student and the tutor who accepted their request,
+  or anyone and the admin team (admins may also open a thread with any account). The client calls
+  `start_conversation(peer, body)`, which checks the relationship, reuses an existing pair and writes
+  the first message; clients cannot insert conversation or member rows themselves. A message trigger
+  forces the sender id and display name from the session and stamps the time, sent messages cannot be
+  edited, and `last_message_at` drives thread order through `my_conversations()`. `my_contacts()`
+  is the picker list. `src/lib/messages.ts` is the client path; the Messenger component renders the
+  threads and the New conversation picker, falling back to seeded demo chats only when Supabase is
+  not configured or the live list is unreachable (shown with a Sample badge).
 - Admin role is stored on `profiles.role = 'admin'`; no policy lets a user set it themselves.
 
 ## Payments and plans
