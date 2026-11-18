@@ -81,6 +81,7 @@ import {
   AdminSales,
   AdminSettings,
   AdminSupport,
+  AdminVerifications,
 } from './pages/admin-ops'
 import { buttonStyles } from './components/ui'
 
@@ -154,6 +155,7 @@ const routeTitles: Record<string, string> = {
   '/admin/orders': 'Orders · Admin Manager · NeuroBloom',
   '/admin/products': 'Products · Admin Manager · NeuroBloom',
   '/admin/users': 'Users & approvals · Admin Manager · NeuroBloom',
+  '/admin/verifications': 'Teacher verification · Admin Manager · NeuroBloom',
   '/admin/moderation': 'Content moderation · Admin Manager · NeuroBloom',
   '/admin/finance': 'Finance · Admin Manager · NeuroBloom',
   '/admin/invoices': 'Invoices · Admin Manager · NeuroBloom',
@@ -291,6 +293,7 @@ export default function App() {
         <Route path="/admin/orders" element={guard('admin', <AdminOrders />)} />
         <Route path="/admin/products" element={guard('admin', <AdminProducts />)} />
         <Route path="/admin/users" element={guard('admin', <AdminUsers />)} />
+        <Route path="/admin/verifications" element={guard('admin', <AdminVerifications />)} />
         <Route path="/admin/moderation" element={guard('admin', <AdminModeration />)} />
         <Route path="/admin/finance" element={guard('admin', <AdminFinance />)} />
         <Route path="/admin/invoices" element={guard('admin', <AdminInvoices />)} />

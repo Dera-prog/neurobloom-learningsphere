@@ -20,6 +20,7 @@ import { Badge, Button, Input, Modal, ProgressBar, Ring, Select, TextArea } from
 import { Confetti, useToast } from './toast'
 import { useAuth } from '../lib/auth'
 import { publishAssignment } from '../lib/homework'
+import { gradeSubmission } from '../lib/grades'
 
 /* --------------------------------- Quiz ----------------------------------- */
 
@@ -469,22 +470,49 @@ export function AssignmentModal({ assignmentId, open, onClose }: { assignmentId:
 
 /* --------------------------------- Grade ---------------------------------- */
 
-export function GradeModal({ item, open, onClose }: { item: GradingItem | null; open: boolean; onClose: () => void }) {
+export function GradeModal({
+  item,
+  open,
+  onClose,
+  onSaved,
+}: {
+  item: GradingItem | null
+  open: boolean
+  onClose: () => void
+  onSaved?: () => void
+}) {
   const { dispatch } = useApp()
   const toast = useToast()
   const [score, setScore] = useState(0)
   const [feedback, setFeedback] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open || !item) return
+    setSaving(false)
     setScore(Math.round(item.total * 0.8))
     setFeedback('Strong work overall. Your method is clear — review the final step and show all units next time.')
   }, [open, item])
 
   if (!item) return null
 
-  const save = () => {
-    dispatch({ type: 'GRADE_SUBMISSION', queueId: item.id, score, feedback })
+  const save = async () => {
+    if (saving) return
+    if (item.submissionId) {
+      setSaving(true)
+      const result = await gradeSubmission({ submissionId: item.submissionId, score, feedback })
+      setSaving(false)
+      if (!result.ok) {
+        toast('The grade was not saved', {
+          description: result.error ?? 'Check your connection and try again.',
+          tone: 'warn',
+        })
+        return
+      }
+      onSaved?.()
+    } else {
+      dispatch({ type: 'GRADE_SUBMISSION', queueId: item.id, score, feedback })
+    }
     toast('Submission graded', { description: `${item.student} received ${score}/${item.total} and your feedback.`, tone: 'success' })
     onClose()
   }
@@ -503,8 +531,8 @@ export function GradeModal({ item, open, onClose }: { item: GradingItem | null; 
             <Button variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="role" size="sm" onClick={save}>
-              <Check size={13} /> Save grade
+            <Button variant="role" size="sm" onClick={save} disabled={saving}>
+              <Check size={13} /> {saving ? 'Saving…' : 'Save grade'}
             </Button>
           </div>
         </div>
@@ -523,11 +551,19 @@ export function GradeModal({ item, open, onClose }: { item: GradingItem | null; 
       <div className="mb-4 rounded-xl border border-border bg-background/50 p-3">
         <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Submitted work</p>
         <p className="text-xs leading-relaxed text-foreground">
-          “I started by factoring the numerator, then cancelled the common term. For the derivative I applied the power rule and checked each term. The final answer is shown with the working attached.”
+          {item.submissionId
+            ? item.answerText
+              ? `“${item.answerText}”`
+              : item.attachmentName
+                ? 'The answer was handed in as an attachment.'
+                : 'No written answer was attached.'
+            : '“I started by factoring the numerator, then cancelled the common term. For the derivative I applied the power rule and checked each term. The final answer is shown with the working attached.”'}
         </p>
-        <p className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-role-ink">
-          <Paperclip size={11} /> {item.student.toLowerCase().replace(/\s+/g, '-')}-submission.pdf
-        </p>
+        {item.attachmentName ? (
+          <p className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-role-ink">
+            <Paperclip size={11} /> {item.attachmentName}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[150px_1fr]">

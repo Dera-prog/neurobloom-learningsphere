@@ -72,6 +72,17 @@ import {
   type HomeworkSnapshot,
   type HomeworkTeacher,
 } from '../lib/homework'
+import { loadChildGrades, type ChildGrade } from '../lib/grades'
+import {
+  attendanceRate,
+  dateLabel,
+  formatTime,
+  loadChildAttendance,
+  loadChildSessions,
+  weekdayLabel,
+  type AttendanceRecord,
+  type ChildSession,
+} from '../lib/schedule'
 import { useAuth } from '../lib/auth'
 import { NewUserDashboard } from '../components/onboarding'
 import { DailyProgressCard } from '../components/parent-daily-progress'
@@ -140,10 +151,45 @@ function planName(id: string) {
 export function ParentHome() {
   const { state, dispatch, list, child, setChild, profile } = useParentChildren()
   const { profile: account } = useAuth()
+  const [childGrades, setChildGrades] = useState<ChildGrade[] | null>(null)
+  const [childSessions, setChildSessions] = useState<ChildSession[] | null>(null)
+
+  useEffect(() => {
+    if (!account?.id) {
+      setChildGrades(null)
+      return
+    }
+    let active = true
+    loadChildGrades({ guardianId: account.id, childName: profile.name }).then((rows) => {
+      if (active) setChildGrades(rows)
+    })
+    return () => {
+      active = false
+    }
+  }, [account?.id, profile.name])
+
+  useEffect(() => {
+    if (!account?.id) {
+      setChildSessions(null)
+      return
+    }
+    let active = true
+    loadChildSessions({ guardianId: account.id, childName: profile.name }).then((rows) => {
+      if (active) setChildSessions(rows)
+    })
+    return () => {
+      active = false
+    }
+  }, [account?.id, profile.name])
 
   if (account?.role === 'parent' && state.newAccount) {
     return <NewUserDashboard role="parent" />
   }
+
+  // Table grades win; the seeded profile only stands in when the tables are out.
+  const childGradesDisplay = childGrades
+    ? childGrades.map((g) => ({ ...g, color: subjectColorFor(g.subject) }))
+    : profile.grades
 
   const planId = state.plans[child]
   const alerts = profile.hasHistory ? parentAlerts.filter((a) => a.child === child) : []
@@ -256,10 +302,10 @@ export function ParentHome() {
               )}
             </SectionCard>
 
-            <SectionCard title="Grades this term" subtitle="Continuous assessment and teacher remarks" icon={BookOpen}>
-              {profile.grades.length ? (
+            <SectionCard title="Grades this term" subtitle="Latest graded work and teacher feedback" icon={BookOpen}>
+              {childGradesDisplay.length ? (
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {profile.grades.map((g) => (
+                  {childGradesDisplay.map((g) => (
                     <div key={g.code} className="rounded-xl border border-border/70 p-3">
                       <div className="flex items-center justify-between">
                         <div>
@@ -353,7 +399,29 @@ export function ParentHome() {
             </SectionCard>
 
             <SectionCard title="This week" subtitle="Upcoming sessions and classes" icon={Clock}>
-              {profile.hasHistory ? (
+              {childSessions && childSessions.length ? (
+                <div className="space-y-2">
+                  {childSessions.map((session) => (
+                    <div key={session.id} className="flex items-center gap-2.5 rounded-lg border border-border/70 p-2.5">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-bold text-muted-foreground" aria-hidden>
+                        {session.subject.slice(0, 2).toUpperCase()}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[11px] font-bold text-foreground">{session.className || session.subject}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {weekdayLabel(session.weekday)} · {formatTime(session.startsAt)}–{formatTime(session.endsAt)}
+                          {session.room ? ` · ${session.room}` : ''}
+                        </p>
+                      </div>
+                      <Badge tone="neutral">Class</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : childSessions !== null ? (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  No sessions scheduled yet. Classes appear here once the timetable is set.
+                </p>
+              ) : profile.hasHistory ? (
                 <div className="space-y-2">
                   {profile.specialNeeds
                     ? specialSupport.sessions.map((s) => (
@@ -430,7 +498,27 @@ export function ParentHome() {
 export function ParentProgress() {
   const { state } = useApp()
   const toast = useToast()
+  const { profile: account } = useAuth()
   const { child, setChild, list, profile } = useParentChildren()
+  const [childGrades, setChildGrades] = useState<ChildGrade[] | null>(null)
+
+  useEffect(() => {
+    if (!account?.id) {
+      setChildGrades(null)
+      return
+    }
+    let active = true
+    loadChildGrades({ guardianId: account.id, childName: profile.name }).then((rows) => {
+      if (active) setChildGrades(rows)
+    })
+    return () => {
+      active = false
+    }
+  }, [account?.id, profile.name])
+
+  const grades = childGrades
+    ? childGrades.map((g) => ({ ...g, color: subjectColorFor(g.subject) }))
+    : profile.grades
 
   const exportReport = () => {
     const lines = [
@@ -442,7 +530,7 @@ export function ParentProgress() {
       `Work completed: ${profile.workDone} (${profile.workLabel})`,
       '',
       'Grades',
-      ...profile.grades.map((g) => `${g.subject}: ${g.score}% (${g.grade}) – ${g.teacher}`),
+      ...grades.map((g) => `${g.subject}: ${g.score}% (${g.grade}) – ${g.teacher}`),
       '',
       'Plan',
       planName(state.plans[child]),
@@ -487,23 +575,31 @@ export function ParentProgress() {
         </SectionCard>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-          <SectionCard title="Subject grades" subtitle="Latest continuous assessment" icon={BookOpen}>
+          <SectionCard title="Subject grades" subtitle="Latest graded work" icon={BookOpen}>
             <div className="space-y-3">
-              {profile.grades.map((g) => (
-                <div key={g.code} className="rounded-xl border border-border/70 p-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-foreground">{g.subject}</p>
-                      <p className="text-[10px] text-muted-foreground">{g.teacher}</p>
+              {grades.length ? (
+                grades.map((g) => (
+                  <div key={g.code} className="rounded-xl border border-border/70 p-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-foreground">{g.subject}</p>
+                        <p className="text-[10px] text-muted-foreground">{g.teacher}</p>
+                      </div>
+                      <div className="text-right">
+                        <Badge tone="warn">{g.grade}</Badge>
+                        <p className="mt-0.5 text-[10px] font-bold text-muted-foreground">{g.score}%</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <Badge tone="warn">{g.grade}</Badge>
-                      <p className="mt-0.5 text-[10px] font-bold text-muted-foreground">{g.score}%</p>
-                    </div>
+                    <ProgressBar value={g.score} color={g.color} className="mt-2" label={`${g.subject} score`} />
                   </div>
-                  <ProgressBar value={g.score} color={g.color} className="mt-2" label={`${g.subject} score`} />
-                </div>
-              ))}
+                ))
+              ) : (
+                <EmptyState
+                  emoji="📚"
+                  title="No grades yet"
+                  description="Scores appear here once a class teacher marks submitted work."
+                />
+              )}
             </div>
           </SectionCard>
 
@@ -538,8 +634,38 @@ export function ParentProgress() {
   )
 }
 
+const ATTENDANCE_TONE: Record<AttendanceRecord['status'], 'success' | 'danger' | 'warn' | 'sky'> = {
+  present: 'success',
+  absent: 'danger',
+  late: 'warn',
+  excused: 'sky',
+}
+
 export function ParentAttendance() {
   const { child, setChild, list, profile } = useParentChildren()
+  const { profile: account } = useAuth()
+  const [records, setRecords] = useState<AttendanceRecord[] | null>(null)
+  const [sessions, setSessions] = useState<ChildSession[] | null>(null)
+
+  useEffect(() => {
+    if (!account?.id) {
+      setRecords(null)
+      setSessions(null)
+      return
+    }
+    let active = true
+    Promise.all([
+      loadChildAttendance({ guardianId: account.id, childName: profile.name }),
+      loadChildSessions({ guardianId: account.id, childName: profile.name }),
+    ]).then(([nextRecords, nextSessions]) => {
+      if (!active) return
+      setRecords(nextRecords)
+      setSessions(nextSessions)
+    })
+    return () => {
+      active = false
+    }
+  }, [account?.id, profile.name])
 
   const week = [
     { day: 'Mon', subject: profile.specialNeeds ? 'Speech & Language' : 'Mathematics' },
@@ -561,75 +687,170 @@ export function ParentAttendance() {
   const absences = week.filter((w) => w.status !== 'Present').length
   const excused = week.filter((w) => w.status === 'Excused').length
 
+  const rate = records ? attendanceRate(records) : null
+  const presentCount = records?.filter((row) => row.status === 'present' || row.status === 'late').length ?? 0
+  const absentCount = records?.filter((row) => row.status === 'absent').length ?? 0
+  const lateCount = records?.filter((row) => row.status === 'late').length ?? 0
+  const excusedCount = records?.filter((row) => row.status === 'excused').length ?? 0
+  const registerDays = records ? new Set(records.map((row) => row.date)).size : 0
+
   return (
     <RoleLayout role="parent">
       <PageHeader
         title="Attendance"
         subtitle="Class and specialist session attendance"
-        badge={<Badge tone="success">{profile.attendance}% this term</Badge>}
+        badge={
+          records === null ? (
+            <Badge tone="success">{profile.attendance}% this term</Badge>
+          ) : rate === null ? (
+            <Badge tone="neutral">No records yet</Badge>
+          ) : (
+            <Badge tone="success">{rate}% recorded</Badge>
+          )
+        }
         actions={<HeaderActions role="parent" />}
       />
       <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
         <ChildSwitch child={child} onChange={setChild} children={list} />
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="Attendance rate" value={`${profile.attendance}%`} icon={CalendarCheck} color="#5b6574" soft="#e9ebee" sub={profile.attendanceLabel} />
-          <StatCard label="Present this week" value={`${present}/5`} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub={profile.hasHistory ? 'Keep it up' : 'No classes yet'} />
-          <StatCard label="Absences" value={absences} icon={AlertTriangle} color="#f97316" soft="#fff4e8" sub={excused ? `${excused} excused` : 'None excused'} />
-          <StatCard label="Punctuality" value={profile.hasHistory ? '94%' : '—'} icon={Clock} color="#0ea5e9" soft="#e8f4fd" sub="On time this month" />
-        </div>
-
-        <SectionCard title="This week" subtitle="Daily attendance record" icon={CalendarCheck}>
-          <div className="grid grid-cols-5 gap-2">
-            {week.map((w) => (
-              <div
-                key={w.day}
-                className={cn(
-                  'rounded-xl border p-2.5 text-center',
-                  w.status === 'Present'
-                    ? 'border-emerald-200 bg-emerald-50'
-                    : w.status === 'Excused'
-                      ? 'border-sky-200 bg-sky-50'
-                      : w.status === 'Absent'
-                        ? 'border-rose-200 bg-rose-50'
-                        : 'border-border bg-muted/40',
-                )}
-              >
-                <p className="text-[11px] font-bold text-foreground">{w.day}</p>
-                <p className="mt-1 text-lg" aria-hidden>{w.status === 'Present' ? '✅' : w.status === 'Excused' ? '🗓️' : w.status === 'Absent' ? '❌' : '·'}</p>
-                <p className="mt-0.5 text-[9px] font-semibold text-muted-foreground">{w.status}</p>
-              </div>
-            ))}
+        {records === null ? (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Attendance rate" value={`${profile.attendance}%`} icon={CalendarCheck} color="#5b6574" soft="#e9ebee" sub={profile.attendanceLabel} />
+            <StatCard label="Present this week" value={`${present}/5`} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub={profile.hasHistory ? 'Keep it up' : 'No classes yet'} />
+            <StatCard label="Absences" value={absences} icon={AlertTriangle} color="#f97316" soft="#fff4e8" sub={excused ? `${excused} excused` : 'None excused'} />
+            <StatCard label="Punctuality" value={profile.hasHistory ? '94%' : '—'} icon={Clock} color="#0ea5e9" soft="#e8f4fd" sub="On time this month" />
           </div>
-        </SectionCard>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label="Attendance rate" value={rate === null ? '—' : `${rate}%`} icon={CalendarCheck} color="#5b6574" soft="#e9ebee" sub={`${registerDays} register${registerDays === 1 ? '' : 's'} recorded`} />
+            <StatCard label="Present" value={presentCount} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub={lateCount ? `${lateCount} late` : 'All on time'} />
+            <StatCard label="Absences" value={absentCount} icon={AlertTriangle} color="#f97316" soft="#fff4e8" sub={excusedCount ? `${excusedCount} excused` : 'None excused'} />
+            <StatCard label="Late arrivals" value={lateCount} icon={Clock} color="#0ea5e9" soft="#e8f4fd" sub="Marked by the teacher" />
+          </div>
+        )}
 
-        <SectionCard title="Session records" subtitle="Most recent first" icon={ClipboardList}>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left">
-              <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-2 py-2 font-bold">Day</th>
-                  <th className="px-2 py-2 font-bold">Subject / session</th>
-                  <th className="px-2 py-2 font-bold">Time</th>
-                  <th className="px-2 py-2 font-bold">Status</th>
-                  <th className="px-2 py-2 text-right font-bold">Duration</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/70 text-xs">
+        {records === null ? (
+          <>
+            <SectionCard title="This week" subtitle="Daily attendance record" icon={CalendarCheck}>
+              <div className="grid grid-cols-5 gap-2">
                 {week.map((w) => (
-                  <tr key={w.day}>
-                    <td className="px-2 py-3 font-semibold text-foreground">{w.day}</td>
-                    <td className="px-2 py-3 text-muted-foreground">{w.subject}</td>
-                    <td className="px-2 py-3 text-muted-foreground">{w.time}</td>
-                    <td className="px-2 py-3">
-                      <Badge tone={w.status === 'Present' ? 'success' : w.status === 'Excused' ? 'sky' : w.status === 'Absent' ? 'danger' : 'neutral'}>{w.status}</Badge>
-                    </td>
-                    <td className="px-2 py-3 text-right text-muted-foreground">1 hr</td>
-                  </tr>
+                  <div
+                    key={w.day}
+                    className={cn(
+                      'rounded-xl border p-2.5 text-center',
+                      w.status === 'Present'
+                        ? 'border-emerald-200 bg-emerald-50'
+                        : w.status === 'Excused'
+                          ? 'border-sky-200 bg-sky-50'
+                          : w.status === 'Absent'
+                            ? 'border-rose-200 bg-rose-50'
+                            : 'border-border bg-muted/40',
+                    )}
+                  >
+                    <p className="text-[11px] font-bold text-foreground">{w.day}</p>
+                    <p className="mt-1 text-lg" aria-hidden>{w.status === 'Present' ? '✅' : w.status === 'Excused' ? '🗓️' : w.status === 'Absent' ? '❌' : '·'}</p>
+                    <p className="mt-0.5 text-[9px] font-semibold text-muted-foreground">{w.status}</p>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Session records" subtitle="Most recent first" icon={ClipboardList}>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left">
+                  <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-2 font-bold">Day</th>
+                      <th className="px-2 py-2 font-bold">Subject / session</th>
+                      <th className="px-2 py-2 font-bold">Time</th>
+                      <th className="px-2 py-2 font-bold">Status</th>
+                      <th className="px-2 py-2 text-right font-bold">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/70 text-xs">
+                    {week.map((w) => (
+                      <tr key={w.day}>
+                        <td className="px-2 py-3 font-semibold text-foreground">{w.day}</td>
+                        <td className="px-2 py-3 text-muted-foreground">{w.subject}</td>
+                        <td className="px-2 py-3 text-muted-foreground">{w.time}</td>
+                        <td className="px-2 py-3">
+                          <Badge tone={w.status === 'Present' ? 'success' : w.status === 'Excused' ? 'sky' : w.status === 'Absent' ? 'danger' : 'neutral'}>{w.status}</Badge>
+                        </td>
+                        <td className="px-2 py-3 text-right text-muted-foreground">1 hr</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+          </>
+        ) : records.length === 0 ? (
+          <EmptyState
+            emoji="🗓️"
+            title="No attendance recorded yet"
+            description="Your child’s teacher takes the register in class. Marks appear here the same day."
+          />
+        ) : (
+          <SectionCard title="Recent registers" subtitle="Most recent first" icon={ClipboardList}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left">
+                <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-2 py-2 font-bold">Date</th>
+                    <th className="px-2 py-2 font-bold">Class</th>
+                    <th className="px-2 py-2 font-bold">Subject</th>
+                    <th className="px-2 py-2 font-bold">Status</th>
+                    <th className="px-2 py-2 text-right font-bold">Recorded</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/70 text-xs">
+                  {records.slice(0, 20).map((row, index) => (
+                    <tr key={`${row.date}-${row.className}-${index}`}>
+                      <td className="px-2 py-3 font-semibold text-foreground">{dateLabel(row.date)}</td>
+                      <td className="px-2 py-3 text-muted-foreground">{row.className || 'Class'}</td>
+                      <td className="px-2 py-3 text-muted-foreground">{row.subject || '—'}</td>
+                      <td className="px-2 py-3">
+                        <Badge tone={ATTENDANCE_TONE[row.status]} className="capitalize">{row.status}</Badge>
+                      </td>
+                      <td className="px-2 py-3 text-right text-muted-foreground">
+                        {row.markedAt ? dayMonth(new Date(row.markedAt)) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </SectionCard>
+        )}
+
+        <SectionCard title="Weekly timetable" subtitle="Class schedule" icon={CalendarCheck}>
+          {sessions === null ? (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              No timetable available for this learner yet.
+            </p>
+          ) : sessions.length === 0 ? (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              No sessions scheduled yet. Classes appear here once the timetable is set.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {sessions.map((session) => (
+                <div key={session.id} className="flex flex-col gap-2 rounded-lg border border-border/70 p-2.5 sm:flex-row sm:items-center">
+                  <span className="inline-flex w-12 shrink-0 items-center justify-center rounded-md bg-muted px-2 py-1 text-[10px] font-bold text-foreground">
+                    {weekdayLabel(session.weekday)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-bold text-foreground">{session.className || session.subject}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatTime(session.startsAt)}–{formatTime(session.endsAt)}
+                      {session.room ? ` · ${session.room}` : ''}
+                    </p>
+                  </div>
+                  <Badge tone="neutral">{session.subject || 'Class'}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
         <Card className="flex flex-wrap items-center justify-between gap-3 bg-role-soft/50 p-4">

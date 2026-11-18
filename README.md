@@ -233,7 +233,7 @@ folder and every `.env*` file except `.env.example` are git-ignored.
 
 ## Database
 
-Apply `supabase/migrations/0001` → `0006` to a Supabase project (SQL editor or CLI):
+Apply `supabase/migrations/0001` → `0009` to a Supabase project (SQL editor or CLI):
 
 - `profiles` — one row per account: full name, phone, role (fixed by RLS), created_at.
 - `user_state` — per-user JSON blob for the whole app state, with self read/insert/update policies.
@@ -246,6 +246,26 @@ Apply `supabase/migrations/0001` → `0006` to a Supabase project (SQL editor or
   Phase 1 homework model. Guardians read their own child's work; class teachers set and grade it;
   admins see everything. `src/lib/homework.ts` falls back to seeded demo content until the
   migration is applied.
+- Grades live on `submissions` and are written only by the class teacher (or an admin): 0007 adds
+  a trigger that refuses score, feedback or `graded` status changes from a guardian on a claimed
+  class, and lets a teacher claim a class that no one owns yet. The parent dashboards read their
+  child's latest graded work per subject from the table.
+- `class_sessions` and `attendance` (0008) hold the weekly timetable and the register. Each session
+  is one recurring slot (ISO weekday 1–7, start/end time, room); the class teacher or an admin
+  writes them. Attendance is one row per class, learner and date. A trigger requires the writer to
+  teach the class, rejects learners who are not enrolled, refuses to move a record to another
+  learner or class, and stamps `marked_by`/`marked_at` server-side. Guardians read their own child's
+  records only — an absence request belongs in messages.
+- Teacher verification (0009) is `teacher_verifications` (one row per teacher: status
+  `pending`/`approved`/`rejected`, review note, reviewer and timestamps) plus
+  `teacher_verification_documents` (name, type, private storage path, per-document status). Files live
+  in the **private** `teacher-verification` bucket under `<teacher id>/…`, and storage policies only
+  let a teacher touch their own folder; viewers open a short-lived signed URL. A trigger forces every
+  teacher submission to `pending` with the display name and email copied from `profiles`, so a crafted
+  request cannot rename the applicant or self-approve; only an admin can approve or reject, and
+  `reviewed_by`/`reviewed_at` are stamped by the database. Uploading a new document reopens an approved
+  or rejected verification for review. The admin queue is `/admin/verifications`.
+  `src/lib/verification.ts` is the only client path to these tables.
 - Admin role is stored on `profiles.role = 'admin'`; no policy lets a user set it themselves.
 
 ## Payments and plans

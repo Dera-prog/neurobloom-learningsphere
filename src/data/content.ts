@@ -103,11 +103,15 @@ export interface AcceptedSession {
 export interface GradingItem {
   id: string
   assignmentId?: string
+  /** Set when the item is a real submissions row; absent for sample rows. */
+  submissionId?: string
   title: string
   context: string
   student: string
   submitted: string
   total: number
+  answerText?: string | null
+  attachmentName?: string | null
 }
 
 export interface TeacherClass {

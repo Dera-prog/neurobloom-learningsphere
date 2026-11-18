@@ -272,6 +272,7 @@ export const roleConfigs: Record<Audience, RoleConfig> = {
       { to: '/admin/invoices', label: 'Invoices', icon: Receipt },
       { to: '/admin/payroll', label: 'Teacher Payroll', icon: Banknote },
       { to: '/admin/users', label: 'Users & Approvals', icon: Users },
+      { to: '/admin/verifications', label: 'Teacher Verification', icon: UserCheck },
       { to: '/admin/moderation', label: 'Moderation', icon: ShieldCheck },
       { to: '/admin/reports', label: 'Reports', icon: FileText },
       { to: '/admin/feedback', label: 'Feedback', icon: Star },

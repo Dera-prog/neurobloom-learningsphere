@@ -513,6 +513,16 @@ export async function publishAssignment(
         .maybeSingle()
       if (unclaimed.error) throw unclaimed.error
       classId = (unclaimed.data as { id: string } | null)?.id
+      if (classId) {
+        // Taking the class on is what gives the teacher the roll, and later
+        // the grades; an unclaimed class holds no authority to hand over.
+        const claimed = await client
+          .from('classes')
+          .update({ teacher_id: teacher.id, teacher_name: teacher.name })
+          .eq('id', classId)
+          .is('teacher_id', null)
+        if (claimed.error) throw claimed.error
+      }
     }
 
     if (!classId) {

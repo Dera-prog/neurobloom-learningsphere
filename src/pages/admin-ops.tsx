@@ -52,6 +52,13 @@ import {
 } from '../components/ui'
 import { useToast } from '../components/toast'
 import { readComplaints } from '../lib/complaints'
+import {
+  loadVerificationQueue,
+  reviewVerification,
+  verificationFileUrl,
+  type QueueEntry,
+  type VerificationDoc,
+} from '../lib/verification'
 import { naira } from '../lib/utils'
 import {
   adminActivity,
@@ -1713,3 +1720,245 @@ export function AdminSettings() {
     </ConsolePage>
   )
 }
+
+/* --------------------------- Teacher verification --------------------------- */
+
+export function AdminVerifications() {
+  const toast = useToast()
+  const [queue, setQueue] = useState<QueueEntry[] | null>(null)
+  const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending')
+  const [selected, setSelected] = useState<QueueEntry | null>(null)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    loadVerificationQueue().then((rows) => {
+      if (active) setQueue(rows)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const rows = (queue ?? []).filter((row) => filter === 'all' || row.status === filter)
+  const pendingCount = (queue ?? []).filter((row) => row.status === 'pending').length
+  const approvedCount = (queue ?? []).filter((row) => row.status === 'approved').length
+  const rejectedCount = (queue ?? []).filter((row) => row.status === 'rejected').length
+
+  async function openDocument(doc: VerificationDoc) {
+    const url = await verificationFileUrl(doc.storagePath)
+    if (!url) {
+      toast('Could not open the document', { description: 'The file link has expired or is unavailable.', tone: 'warn' })
+      return
+    }
+    window.open(url, '_blank', 'noopener')
+  }
+
+  function review(entry: QueueEntry) {
+    setSelected(entry)
+    setNote(entry.reviewNote)
+  }
+
+  async function decide(decision: 'approved' | 'rejected') {
+    if (!selected) return
+    setSaving(true)
+    const result = await reviewVerification(selected.id, decision, note)
+    setSaving(false)
+    if (!result.ok) {
+      toast('Review failed', { description: result.error, tone: 'warn' })
+      return
+    }
+    setQueue((prev) =>
+      (prev ?? []).map((row) =>
+        row.id === selected.id
+          ? {
+              ...row,
+              status: decision,
+              reviewNote: note.trim(),
+              reviewedAt: new Date().toISOString(),
+              docs: row.docs.map((doc) => (doc.status === 'pending' ? { ...doc, status: decision } : doc)),
+            }
+          : row,
+      ),
+    )
+    toast(decision === 'approved' ? 'Verification approved' : 'Verification returned', {
+      description:
+        decision === 'approved'
+          ? `${selected.teacherName} now shows as a verified teacher.`
+          : `${selected.teacherName} can see your note and upload replacement documents.`,
+      tone: decision === 'approved' ? 'success' : 'warn',
+    })
+    setSelected(null)
+    setNote('')
+  }
+
+  return (
+    <ConsolePage
+      title="Teacher verification"
+      subtitle="Review identity, qualification and safeguarding documents"
+      badge={<Badge tone="role">{pendingCount} pending</Badge>}
+    >
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatCard label="Waiting for review" value={pendingCount} icon={Clock} sub="Awaiting a decision" />
+        <StatCard label="Approved" value={approvedCount} icon={CheckCircle2} sub="Verified teachers" />
+        <StatCard label="Returned" value={rejectedCount} icon={ShieldCheck} sub="Waiting on new evidence" />
+        <StatCard
+          label="Documents"
+          value={(queue ?? []).reduce((total, row) => total + row.docs.length, 0)}
+          icon={FileText}
+          sub="Stored privately"
+        />
+      </div>
+
+      <Tabs<'pending' | 'approved' | 'rejected' | 'all'>
+        value={filter}
+        onChange={setFilter}
+        tabs={[
+          { id: 'pending', label: 'Pending', count: pendingCount },
+          { id: 'approved', label: 'Approved', count: approvedCount },
+          { id: 'rejected', label: 'Returned', count: rejectedCount },
+          { id: 'all', label: 'All', count: queue?.length ?? 0 },
+        ]}
+      />
+
+      <Card className="overflow-hidden">
+        {queue === null ? (
+          <p className="p-6 text-center text-xs text-muted-foreground">
+            Verification data is not connected on this deployment yet. Apply migration 0009 to switch this queue on.
+          </p>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            emoji="📄"
+            title={filter === 'pending' ? 'Nothing waiting for review' : 'No submissions here'}
+            description={
+              filter === 'pending'
+                ? 'New teacher documents appear here as soon as they are uploaded.'
+                : 'Try another tab to see the rest of the queue.'
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left">
+              <thead className="bg-muted/60 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-bold">Teacher</th>
+                  <th className="px-4 py-3 font-bold">Submitted</th>
+                  <th className="px-4 py-3 font-bold">Documents</th>
+                  <th className="px-4 py-3 font-bold">Status</th>
+                  <th className="px-4 py-3 text-right font-bold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/70 text-xs">
+                {rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-foreground">{row.teacherName}</p>
+                      <p className="text-[10px] text-muted-foreground">{row.teacherEmail || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{new Date(row.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      <p className="font-semibold text-foreground">
+                        {row.docs.length} file{row.docs.length === 1 ? '' : 's'}
+                      </p>
+                      <p className="text-[10px]">{[...new Set(row.docs.map((doc) => doc.type))].join(' · ') || '—'}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'danger' : 'warn'}>
+                        {row.status === 'approved' ? 'Approved' : row.status === 'rejected' ? 'Returned' : 'Pending'}
+                      </Badge>
+                      {row.reviewNote ? <p className="mt-1 max-w-[220px] text-[10px] text-muted-foreground">{row.reviewNote}</p> : null}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button size="sm" variant={row.status === 'pending' ? 'role' : 'outline'} onClick={() => review(row)}>
+                        <Eye size={12} /> {row.status === 'pending' ? 'Review' : 'View'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected ? `${selected.teacherName} · verification` : 'Verification'}
+        subtitle={selected ? `Submitted ${new Date(selected.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}
+        size="lg"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSelected(null)}>
+              Close
+            </Button>
+            <Button variant="danger" size="sm" onClick={() => decide('rejected')} disabled={saving || !selected || selected.status !== 'pending'}>
+              Return for changes
+            </Button>
+            <Button variant="role" size="sm" onClick={() => decide('approved')} disabled={saving || !selected || selected.status !== 'pending'}>
+              <CheckCircle2 size={12} /> {saving ? 'Saving…' : 'Approve'}
+            </Button>
+          </div>
+        }
+      >
+        {selected ? (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-border/70 p-3 text-[11px]">
+              <p className="font-semibold text-foreground">{selected.teacherName}</p>
+              <p className="text-muted-foreground">{selected.teacherEmail || 'No email on file'}</p>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-bold text-foreground">Documents</p>
+              {selected.docs.length ? (
+                <div className="divide-y divide-border/70 rounded-xl border border-border/70">
+                  {selected.docs.map((doc) => (
+                    <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileText size={14} className="shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-semibold text-foreground">{doc.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {doc.type} · added {doc.added}
+                          </p>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={() => openDocument(doc)}>
+                        <Eye size={12} /> Open
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">No files attached to this application.</p>
+              )}
+            </div>
+
+            {selected.status === 'pending' ? (
+              <label className="block">
+                <span className="mb-1 block text-xs font-bold text-foreground">Note to the teacher (optional)</span>
+                <textarea
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  rows={3}
+                  placeholder="e.g. The ID photo is blurry — please upload a clearer copy."
+                  className="w-full rounded-xl border border-border bg-card px-3 py-2 text-xs text-foreground outline-none focus:border-role"
+                />
+              </label>
+            ) : (
+              <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-[11px] text-muted-foreground">
+                <p className="font-semibold text-foreground">
+                  {selected.status === 'approved' ? 'Approved' : 'Returned for changes'}
+                  {selected.reviewedAt ? ` · ${new Date(selected.reviewedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                </p>
+                {selected.reviewNote ? <p className="mt-1">Note: {selected.reviewNote}</p> : null}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </Modal>
+    </ConsolePage>
+  )
+}
+

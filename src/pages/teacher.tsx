@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  AlertTriangle,
   ArrowRight,
   Award,
   BadgeCheck,
@@ -18,6 +19,7 @@ import {
   Presentation,
   Star,
   Timer,
+  Trash2,
   TrendingUp,
   Users,
   Video,
@@ -58,6 +60,36 @@ import {
   type TeacherClass,
 } from '../data/content'
 import { cn, dayMonth, downloadCsv, greeting, longDate, naira, nextMonthlyDay, uid } from '../lib/utils'
+import { loadTeacherWork, type TeacherWork } from '../lib/grades'
+import {
+  ATTENDANCE_OPTIONS,
+  createSession,
+  dateLabel,
+  deleteSession,
+  formatTime,
+  loadRegister,
+  loadTeacherAttendanceWeek,
+  loadTeacherTimetable,
+  saveRegister,
+  scheduleConfigured,
+  todayValue,
+  weekdayLabel,
+  type AttendanceStatus,
+  type RegisterLearner,
+  type TeacherClassInfo,
+  type TeacherTimetable,
+  type WeekAttendance,
+} from '../lib/schedule'
+import {
+  DOC_TYPES,
+  loadMyVerification,
+  uploadVerificationDocument,
+  verificationConfigured,
+  verificationFileUrl,
+  type DocStatus,
+  type MyVerification,
+  type VerificationDoc,
+} from '../lib/verification'
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -78,6 +110,19 @@ export function TeacherHome() {
   const [live, setLive] = useState<TeacherClass | null>(null)
   const [createAssignment, setCreateAssignment] = useState(false)
   const [createClass, setCreateClass] = useState(false)
+  const [weekAttendance, setWeekAttendance] = useState<WeekAttendance[] | null>(null)
+  const teacherId = profile?.id
+
+  useEffect(() => {
+    if (!scheduleConfigured || !teacherId) return
+    let active = true
+    loadTeacherAttendanceWeek(teacherId).then((rows) => {
+      if (active) setWeekAttendance(rows)
+    })
+    return () => {
+      active = false
+    }
+  }, [teacherId])
 
   if (profile?.role === 'teacher' && state.newAccount) {
     return <NewUserDashboard role="teacher" />
@@ -275,15 +320,35 @@ export function TeacherHome() {
 
             {/* Week attendance */}
             <SectionCard title="Attendance this week" subtitle="Present vs absent" icon={CalendarDays}>
-              <GroupedBars
-                data={attendanceWeek}
-                series={[
-                  { key: 'present', label: 'Present', color: '#10b981' },
-                  { key: 'absent', label: 'Absent', color: '#fda4af' },
-                ]}
-                stacked
-                height={170}
-              />
+              {scheduleConfigured ? (
+                weekAttendance === null ? (
+                  <p className="py-8 text-center text-xs text-muted-foreground">Loading this week’s register…</p>
+                ) : weekAttendance.some((day) => day.present + day.absent > 0) ? (
+                  <GroupedBars
+                    data={weekAttendance}
+                    series={[
+                      { key: 'present', label: 'Present', color: '#10b981' },
+                      { key: 'absent', label: 'Absent', color: '#fda4af' },
+                    ]}
+                    stacked
+                    height={170}
+                  />
+                ) : (
+                  <p className="py-8 text-center text-xs text-muted-foreground">
+                    No register taken this week. Open My Classes to mark attendance.
+                  </p>
+                )
+              ) : (
+                <GroupedBars
+                  data={attendanceWeek}
+                  series={[
+                    { key: 'present', label: 'Present', color: '#10b981' },
+                    { key: 'absent', label: 'Absent', color: '#fda4af' },
+                  ]}
+                  stacked
+                  height={170}
+                />
+              )}
             </SectionCard>
 
             <Card className="flex items-center gap-3 bg-emerald-50 p-4">
@@ -317,7 +382,7 @@ export function TeacherHome() {
   )
 }
 
-export function TeacherClasses() {
+function DemoTeacherClasses() {
   const { state } = useApp()
   const toast = useToast()
   const [live, setLive] = useState<TeacherClass | null>(null)
@@ -412,6 +477,389 @@ export function TeacherClasses() {
       />
       <CreateClassModal open={create} onClose={() => setCreate(false)} />
     </RoleLayout>
+  )
+}
+
+const CLASS_TINTS = [
+  { color: '#6c3fc5', soft: '#f0eefb' },
+  { color: '#0ea5e9', soft: '#e8f4fd' },
+  { color: '#f59e0b', soft: '#fffbeb' },
+  { color: '#ec4899', soft: '#fdf2f8' },
+]
+
+const STATUS_ACTIVE: Record<AttendanceStatus, string> = {
+  present: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+  absent: 'border-rose-300 bg-rose-50 text-rose-700',
+  late: 'border-amber-300 bg-amber-50 text-amber-700',
+  excused: 'border-sky-300 bg-sky-50 text-sky-700',
+}
+
+export function TeacherClasses() {
+  return scheduleConfigured ? <LiveTeacherClasses /> : <DemoTeacherClasses />
+}
+
+function LiveTeacherClasses() {
+  const { state } = useApp()
+  const { profile } = useAuth()
+  const toast = useToast()
+  const teacherId = profile?.id
+  const [timetable, setTimetable] = useState<TeacherTimetable | null>(null)
+  const [week, setWeek] = useState<WeekAttendance[] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [registerFor, setRegisterFor] = useState<TeacherClassInfo | null>(null)
+  const [sessionFor, setSessionFor] = useState<TeacherClassInfo | null>(null)
+
+  const refresh = useCallback(async () => {
+    if (!teacherId) {
+      setLoading(false)
+      return
+    }
+    const [next, nextWeek] = await Promise.all([
+      loadTeacherTimetable(teacherId),
+      loadTeacherAttendanceWeek(teacherId),
+    ])
+    setTimetable(next)
+    setWeek(nextWeek)
+    setLoading(false)
+  }, [teacherId])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const classes = timetable?.classes ?? []
+  const sessions = timetable?.sessions ?? []
+  const totalStudents = classes.reduce((sum, row) => sum + row.students, 0)
+  const marked = (week ?? []).reduce(
+    (sum, day) => ({ present: sum.present + day.present, absent: sum.absent + day.absent }),
+    { present: 0, absent: 0 },
+  )
+  const weekRate = marked.present + marked.absent > 0
+    ? Math.round((marked.present / (marked.present + marked.absent)) * 100)
+    : null
+
+  const removeSession = async (sessionId: string) => {
+    const result = await deleteSession(sessionId)
+    if (!result.ok) {
+      toast('Session not removed', { description: result.error ?? 'Try again.', tone: 'warn' })
+      return
+    }
+    toast('Session removed', 'The timetable has been updated.')
+    void refresh()
+  }
+
+  return (
+    <RoleLayout role="teacher">
+      <PageHeader
+        title="My classes"
+        subtitle="Weekly timetable, class roll and the register"
+        badge={<Badge tone="role">{classes.length} active</Badge>}
+        actions={<HeaderActions role="teacher" />}
+      />
+      <div className="mx-auto max-w-[1300px] space-y-5 p-4 sm:p-6">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label="Classes" value={classes.length} icon={Presentation} color="#10b981" soft="#ecfdf5" sub="This term" />
+          <StatCard label="Students" value={totalStudents} icon={Users} color="#6c3fc5" soft="#f0eefb" sub="On the roll" />
+          <StatCard label="Weekly sessions" value={sessions.length} icon={CalendarDays} color="#0ea5e9" soft="#e8f4fd" sub="On the timetable" />
+          <StatCard
+            label="Attendance"
+            value={weekRate === null ? '—' : `${weekRate}%`}
+            icon={CheckCircle2}
+            color="#f59e0b"
+            soft="#fffbeb"
+            sub={weekRate === null ? 'No register taken this week' : 'This week'}
+          />
+        </div>
+
+        {loading ? (
+          <Card className="p-6 text-sm text-muted-foreground">Loading your classes…</Card>
+        ) : null}
+
+        {!loading && timetable === null ? (
+          <EmptyState
+            emoji="📡"
+            title="Classes could not be loaded"
+            description="The timetable tables did not answer. Refresh the page or try again in a moment."
+          />
+        ) : null}
+
+        {!loading && timetable && classes.length === 0 ? (
+          <EmptyState
+            emoji="🏫"
+            title="No classes yet"
+            description="A class appears here when you publish your first assignment for a level and subject. Its timetable and register live on this page."
+            action={<Link to="/teacher/assignments" className={buttonStyles('role', 'sm')}>Publish an assignment</Link>}
+          />
+        ) : null}
+
+        {classes.length ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {classes.map((klass, index) => {
+              const tint = CLASS_TINTS[index % CLASS_TINTS.length]
+              const slots = sessions.filter((slot) => slot.classId === klass.id)
+              return (
+                <Card key={klass.id} className="overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-border/70 p-4" style={{ background: tint.soft }}>
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/70 text-sm font-extrabold" style={{ color: tint.color }} aria-hidden>
+                        {klass.subject.slice(0, 2).toUpperCase()}
+                      </span>
+                      <div>
+                        <p className="text-sm font-extrabold text-foreground">{klass.name}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {klass.level} · {klass.students} student{klass.students === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge tone="neutral">{slots.length} session{slots.length === 1 ? '' : 's'}</Badge>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <div className="space-y-1.5">
+                      {slots.map((slot) => (
+                        <div key={slot.id} className="flex items-center gap-2 rounded-lg border border-border/70 px-2.5 py-2 text-[11px]">
+                          <Clock size={12} className="text-muted-foreground" aria-hidden />
+                          <span className="font-semibold text-foreground">{weekdayLabel(slot.weekday)}</span>
+                          <span className="text-muted-foreground">{formatTime(slot.startsAt)} – {formatTime(slot.endsAt)}</span>
+                          {slot.room ? <span className="text-muted-foreground">· {slot.room}</span> : null}
+                          <button
+                            type="button"
+                            onClick={() => void removeSession(slot.id)}
+                            aria-label={`Remove ${weekdayLabel(slot.weekday)} session`}
+                            className="ml-auto rounded-md p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      {slots.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground">No sessions on the timetable yet.</p>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="role"
+                        className="flex-1"
+                        disabled={klass.students === 0}
+                        onClick={() => setRegisterFor(klass)}
+                      >
+                        <CheckCircle2 size={14} /> Take register
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setSessionFor(klass)}>
+                        <Plus size={14} /> Add session
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
+          </div>
+        ) : null}
+
+        <SectionCard title="Weekly availability" subtitle="Green days are open for new sessions" icon={CalendarDays}>
+          <div className="flex flex-wrap gap-2">
+            {days.map((d) => {
+              const open = state.availability[d]
+              return (
+                <div key={d} className={cn('flex-1 rounded-xl border px-3 py-2.5 text-center', open ? 'border-emerald-200 bg-emerald-50' : 'border-border bg-muted/50')}>
+                  <p className="text-[11px] font-bold text-foreground">{d}</p>
+                  <p className={cn('text-[10px]', open ? 'font-semibold text-emerald-700' : 'text-muted-foreground')}>{open ? 'Open' : 'Closed'}</p>
+                </div>
+              )
+            })}
+          </div>
+        </SectionCard>
+      </div>
+
+      <RegisterModal klass={registerFor} open={Boolean(registerFor)} onClose={() => setRegisterFor(null)} onSaved={() => void refresh()} />
+      <SessionModal klass={sessionFor} open={Boolean(sessionFor)} onClose={() => setSessionFor(null)} onSaved={() => void refresh()} />
+    </RoleLayout>
+  )
+}
+
+function RegisterModal({
+  klass,
+  open,
+  onClose,
+  onSaved,
+}: {
+  klass: TeacherClassInfo | null
+  open: boolean
+  onClose: () => void
+  onSaved?: () => void
+}) {
+  const toast = useToast()
+  const [date, setDate] = useState(todayValue())
+  const [rows, setRows] = useState<RegisterLearner[] | null>(null)
+  const [saving, setSaving] = useState(false)
+  const classId = klass?.id
+
+  useEffect(() => {
+    if (!open) {
+      setDate(todayValue())
+      setRows(null)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !classId) return
+    let active = true
+    setRows(null)
+    loadRegister(classId, date).then((next) => {
+      if (active) setRows(next)
+    })
+    return () => {
+      active = false
+    }
+  }, [open, classId, date])
+
+  const setStatus = (childId: string, status: AttendanceStatus) => {
+    setRows((current) => current?.map((row) => (row.childId === childId ? { ...row, status } : row)) ?? current)
+  }
+
+  const save = async () => {
+    if (!klass || !rows) return
+    setSaving(true)
+    const result = await saveRegister({
+      classId: klass.id,
+      date,
+      marks: rows.map(({ childId, status }) => ({ childId, status })),
+    })
+    setSaving(false)
+    if (!result.ok) {
+      toast('Register not saved', { description: result.error ?? 'Check your connection and try again.', tone: 'warn' })
+      return
+    }
+    toast('Register saved', { description: `${rows.length} learner${rows.length === 1 ? '' : 's'} marked for ${dateLabel(date)}.` })
+    onSaved?.()
+    onClose()
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={klass ? `${klass.name} · Register` : 'Register'}
+      subtitle="Only the class teacher can mark attendance"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="role" onClick={() => void save()} disabled={saving || !rows || rows.length === 0}>
+            {saving ? 'Saving…' : 'Save register'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Input type="date" label="School day" value={date} max={todayValue()} onChange={(event) => setDate(event.target.value)} />
+        {rows === null ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">Loading the roll…</p>
+        ) : null}
+        {rows !== null && rows.length === 0 ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">Nobody is enrolled in this class yet.</p>
+        ) : null}
+        {rows && rows.length ? (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div key={row.childId} className="flex flex-col gap-2 rounded-xl border border-border/70 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-semibold text-foreground">{row.name}</p>
+                <div className="flex flex-wrap gap-1" role="group" aria-label={`${row.name} attendance`}>
+                  {ATTENDANCE_OPTIONS.map((option) => {
+                    const selected = row.status === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setStatus(row.childId, option.value)}
+                        className={cn(
+                          'rounded-lg border px-2 py-1 text-[10px] font-bold transition',
+                          selected ? STATUS_ACTIVE[option.value] : 'border-border bg-card text-muted-foreground hover:bg-muted',
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </Modal>
+  )
+}
+
+function SessionModal({
+  klass,
+  open,
+  onClose,
+  onSaved,
+}: {
+  klass: TeacherClassInfo | null
+  open: boolean
+  onClose: () => void
+  onSaved?: () => void
+}) {
+  const toast = useToast()
+  const [weekday, setWeekday] = useState(1)
+  const [startsAt, setStartsAt] = useState('09:00')
+  const [endsAt, setEndsAt] = useState('10:00')
+  const [room, setRoom] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) {
+      setWeekday(1)
+      setStartsAt('09:00')
+      setEndsAt('10:00')
+      setRoom('')
+    }
+  }, [open])
+
+  const save = async () => {
+    if (!klass) return
+    setSaving(true)
+    const result = await createSession({ classId: klass.id, weekday, startsAt, endsAt, room })
+    setSaving(false)
+    if (!result.ok) {
+      toast('Session not added', { description: result.error ?? 'Try again.', tone: 'warn' })
+      return
+    }
+    toast('Session added', { description: `${klass.name} · ${weekdayLabel(weekday)} ${formatTime(startsAt)}–${formatTime(endsAt)}.` })
+    onSaved?.()
+    onClose()
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add a weekly session"
+      subtitle={klass ? `${klass.name} · repeats every week` : 'Repeats every week'}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="role" onClick={() => void save()} disabled={saving}>
+            {saving ? 'Saving…' : 'Add session'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Select label="Day" value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>
+          {days.map((label, index) => (
+            <option key={label} value={index + 1}>{label}</option>
+          ))}
+        </Select>
+        <div className="grid grid-cols-2 gap-3">
+          <Input type="time" label="Starts" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} />
+          <Input type="time" label="Ends" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} />
+        </div>
+        <Input label="Room or link (optional)" value={room} onChange={(event) => setRoom(event.target.value)} placeholder="Room 4 · or a meeting link" />
+      </div>
+    </Modal>
   )
 }
 
@@ -526,15 +974,64 @@ export function TeacherStudents() {
 
 export function TeacherAssignments() {
   const { state } = useApp()
+  const { profile } = useAuth()
   const toast = useToast()
   const [gradeItem, setGradeItem] = useState<GradingItem | null>(null)
   const [create, setCreate] = useState(false)
   const [tab, setTab] = useState<'queue' | 'all'>('queue')
+  const [work, setWork] = useState<TeacherWork | null>(null)
+  const [loadingWork, setLoadingWork] = useState(true)
+  const teacherId = profile?.id
+
+  const refresh = useCallback(async () => {
+    if (!teacherId) {
+      setLoadingWork(false)
+      return
+    }
+    setWork(await loadTeacherWork(teacherId))
+    setLoadingWork(false)
+  }, [teacherId])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const liveQueue: GradingItem[] | null = work
+    ? work.pending.map((row) => ({
+        id: `db-${row.submissionId}`,
+        submissionId: row.submissionId,
+        assignmentId: row.assignmentId,
+        title: row.title,
+        context: `${row.className || row.subject} · ${row.type}`,
+        student: row.childName,
+        submitted: row.submittedAt ? dayMonth(new Date(row.submittedAt)) : 'recently',
+        total: row.points,
+        answerText: row.answerText,
+        attachmentName: row.attachmentName,
+      }))
+    : null
+  // Real work replaces the sample queue as soon as the teacher's classes have
+  // any; an empty class list keeps the demo rows, labelled as sample data.
+  // Nothing is shown until the first read returns, so a real class never
+  // flashes sample submissions that a click could hit.
+  const usingSample = work !== null && work.pending.length === 0 && work.graded.length === 0
+  const queue = loadingWork ? [] : usingSample ? state.gradingQueue : liveQueue ?? []
+  const gradedCount = loadingWork
+    ? 0
+    : usingSample
+      ? state.assignments.filter((a) => a.status === 'graded').length
+      : work?.graded.length ?? 0
 
   const exportCsv = () => {
     const rows: Array<Array<string | number>> = [['Student', 'Assignment', 'Points', 'Status']]
-    state.gradingQueue.forEach((g) => rows.push([g.student, g.title, g.total, 'Awaiting grading']))
-    state.assignments.filter((a) => a.status === 'graded').forEach((a) => rows.push(['Student', a.title, `${a.score ?? 0}/${a.points}`, 'Graded']))
+    queue.forEach((g) => rows.push([g.student, g.title, g.total, 'Awaiting grading']))
+    if (usingSample) {
+      state.assignments
+        .filter((a) => a.status === 'graded')
+        .forEach((a) => rows.push(['Student', a.title, `${a.score ?? 0}/${a.points}`, 'Graded']))
+    } else {
+      work?.graded.forEach((g) => rows.push([g.childName, g.title, `${g.score ?? 0}/${g.points}`, 'Graded']))
+    }
     downloadCsv('neurobloom-grades.csv', rows)
     toast('Export ready', 'Your gradebook CSV has been downloaded.')
   }
@@ -544,21 +1041,21 @@ export function TeacherAssignments() {
       <PageHeader
         title="Assignments"
         subtitle="Create work, grade submissions and export results"
-        badge={<Badge tone="warn">{state.gradingQueue.length} to grade</Badge>}
+        badge={<Badge tone="warn">{queue.length} to grade</Badge>}
         actions={<HeaderActions role="teacher" />}
       />
       <div className="mx-auto max-w-[1250px] space-y-5 p-4 sm:p-6">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="To grade" value={state.gradingQueue.length} icon={ClipboardList} color="#f59e0b" soft="#fffbeb" sub="Feedback needed" />
+          <StatCard label="To grade" value={queue.length} icon={ClipboardList} color="#f59e0b" soft="#fffbeb" sub="Feedback needed" />
           <StatCard label="All assignments" value={state.assignments.length} icon={BookOpen} color="#6c3fc5" soft="#f0eefb" sub="Across classes" />
           <StatCard label="Submitted" value={state.assignments.filter((a) => a.status === 'submitted').length} icon={CheckCircle2} color="#0ea5e9" soft="#e8f4fd" sub="In review" />
-          <StatCard label="Graded" value={state.assignments.filter((a) => a.status === 'graded').length} icon={Award} color="#10b981" soft="#ecfdf5" sub="This term" />
+          <StatCard label="Graded" value={gradedCount} icon={Award} color="#10b981" soft="#ecfdf5" sub="This term" />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs
             tabs={[
-              { id: 'queue', label: 'Grading queue', count: state.gradingQueue.length },
+              { id: 'queue', label: 'Grading queue', count: queue.length },
               { id: 'all', label: 'All work', count: state.assignments.length },
             ]}
             value={tab}
@@ -576,7 +1073,15 @@ export function TeacherAssignments() {
 
         {tab === 'queue' ? (
           <div className="space-y-3">
-            {state.gradingQueue.map((g) => (
+            {loadingWork ? (
+              <p className="text-[11px] text-muted-foreground">Loading your grading queue…</p>
+            ) : null}
+            {usingSample && !loadingWork ? (
+              <p className="text-[11px] text-muted-foreground">
+                Sample submissions — real work appears here once your classes have enrolled learners.
+              </p>
+            ) : null}
+            {queue.map((g) => (
               <Card key={g.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
                 <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600" aria-hidden>
                   <ClipboardList size={18} />
@@ -589,7 +1094,7 @@ export function TeacherAssignments() {
                 <Button size="sm" variant="role" onClick={() => setGradeItem(g)}>Grade now</Button>
               </Card>
             ))}
-            {state.gradingQueue.length === 0 ? (
+            {!loadingWork && queue.length === 0 ? (
               <EmptyState emoji="✅" title="All caught up" description="There are no submissions waiting for feedback." />
             ) : null}
           </div>
@@ -635,7 +1140,7 @@ export function TeacherAssignments() {
         )}
       </div>
 
-      <GradeModal item={gradeItem} open={Boolean(gradeItem)} onClose={() => setGradeItem(null)} />
+      <GradeModal item={gradeItem} open={Boolean(gradeItem)} onClose={() => setGradeItem(null)} onSaved={() => void refresh()} />
       <CreateAssignmentModal open={create} onClose={() => setCreate(false)} />
     </RoleLayout>
   )
@@ -1014,42 +1519,118 @@ export function TeacherMessages() {
   )
 }
 
-interface VerificationDoc {
-  id: string
-  name: string
-  type: string
-  status: 'Approved' | 'In review'
-  added: string
+const DOC_STATUS_LABEL: Record<DocStatus, string> = {
+  pending: 'In review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+}
+const DOC_STATUS_TONE: Record<DocStatus, 'warn' | 'success' | 'danger'> = {
+  pending: 'warn',
+  approved: 'success',
+  rejected: 'danger',
 }
 
 const seedVerificationDocs: VerificationDoc[] = [
-  { id: 'vd1', name: 'B.Sc. Mathematics transcript.pdf', type: 'Qualification', status: 'Approved', added: '12 Mar 2024' },
-  { id: 'vd2', name: 'Government-issued ID.pdf', type: 'Identity', status: 'Approved', added: '12 Mar 2024' },
-  { id: 'vd3', name: 'Safeguarding certificate 2026.pdf', type: 'Safeguarding', status: 'Approved', added: '4 Jan 2026' },
+  { id: 'vd1', name: 'B.Sc. Mathematics transcript.pdf', type: 'Qualification', status: 'approved', added: '12 Mar 2024', storagePath: '' },
+  { id: 'vd2', name: 'Government-issued ID.pdf', type: 'Identity', status: 'approved', added: '12 Mar 2024', storagePath: '' },
+  { id: 'vd3', name: 'Safeguarding certificate 2026.pdf', type: 'Safeguarding', status: 'approved', added: '4 Jan 2026', storagePath: '' },
 ]
+
+const demoVerification: MyVerification = {
+  id: null,
+  status: 'approved',
+  note: '',
+  reviewNote: '',
+  submittedAt: null,
+  reviewedAt: null,
+  docs: seedVerificationDocs,
+}
+
+function typeState(docs: VerificationDoc[], type: string) {
+  const list = docs.filter((doc) => doc.type === type)
+  if (!list.length) return { label: 'Not submitted', icon: 'empty' as const }
+  if (list.some((doc) => doc.status === 'rejected')) return { label: 'Action needed', icon: 'rejected' as const }
+  if (list.some((doc) => doc.status === 'pending')) return { label: 'In review', icon: 'pending' as const }
+  return { label: `Verified · ${list[0].added}`, icon: 'approved' as const }
+}
 
 export function TeacherSettings() {
   const { state, dispatch } = useApp()
+  const { profile } = useAuth()
   const toast = useToast()
   const [verifyOpen, setVerifyOpen] = useState(false)
-  const [docs, setDocs] = useState<VerificationDoc[]>(seedVerificationDocs)
+  const [verification, setVerification] = useState<MyVerification | null>(null)
   const [docName, setDocName] = useState('')
   const [docType, setDocType] = useState('Qualification')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const userId = profile?.id
 
-  const inReview = docs.filter((doc) => doc.status === 'In review').length
+  useEffect(() => {
+    if (!verificationConfigured || !userId) return
+    let active = true
+    loadMyVerification(userId).then((row) => {
+      if (active) setVerification(row)
+    })
+    return () => {
+      active = false
+    }
+  }, [userId])
 
-  function addDocument() {
+  const current = verification ?? demoVerification
+  const inReview = current.docs.filter((doc) => doc.status === 'pending').length
+  const rejected = current.status === 'rejected'
+  const verified = current.status === 'approved'
+
+  async function addDocument() {
     const name = docName.trim()
+    if (verificationConfigured && userId) {
+      if (!file) {
+        toast('Choose a file', { description: 'Upload a PDF, PNG or JPEG under 10 MB.', tone: 'warn' })
+        return
+      }
+      setSaving(true)
+      const result = await uploadVerificationDocument({ userId, file, type: docType, name })
+      setSaving(false)
+      if (!result.ok) {
+        toast('Could not submit', { description: result.error, tone: 'warn' })
+        return
+      }
+      const fresh = await loadMyVerification(userId)
+      setVerification(fresh)
+      setDocName('')
+      setFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      toast('Document submitted', {
+        description: `${name || file.name} is queued for review. The admin team usually responds within one working day.`,
+        tone: 'success',
+      })
+      return
+    }
     if (!name) return
-    setDocs((prev) => [
-      { id: uid('vd'), name, type: docType, status: 'In review', added: 'Just now' },
-      ...prev,
-    ])
+    setVerification((prev) => {
+      const base = prev ?? demoVerification
+      return {
+        ...base,
+        status: base.status === 'none' ? 'pending' : base.status,
+        docs: [{ id: uid('vd'), name, type: docType, status: 'pending', added: 'Just now', storagePath: '' }, ...base.docs],
+      }
+    })
     setDocName('')
     toast('Document submitted', {
       description: `${name} is queued for review. The admin team usually responds within one working day.`,
       tone: 'success',
     })
+  }
+
+  async function viewDocument(doc: VerificationDoc) {
+    const url = await verificationFileUrl(doc.storagePath)
+    if (!url) {
+      toast('Could not open the document', { description: 'The file link has expired or is unavailable.', tone: 'warn' })
+      return
+    }
+    window.open(url, '_blank', 'noopener')
   }
 
   return (
@@ -1059,9 +1640,13 @@ export function TeacherSettings() {
         subtitle="Profile, availability and classroom preferences"
         badge={
           inReview ? (
-            <Badge tone="warn">{inReview} document in review</Badge>
-          ) : (
+            <Badge tone="warn">{inReview} document{inReview === 1 ? '' : 's'} in review</Badge>
+          ) : rejected ? (
+            <Badge tone="danger">Verification needs attention</Badge>
+          ) : verified ? (
             <Badge tone="success">Verified teacher</Badge>
+          ) : (
+            <Badge tone="neutral">Verification not started</Badge>
           )
         }
         actions={<HeaderActions role="teacher" />}
@@ -1150,17 +1735,46 @@ export function TeacherSettings() {
         <Card
           className={cn(
             'flex flex-wrap items-center justify-between gap-3 p-4',
-            inReview ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50',
+            inReview
+              ? 'border-amber-200 bg-amber-50'
+              : rejected
+                ? 'border-rose-200 bg-rose-50'
+                : verified
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'bg-muted/40',
           )}
         >
-          <p className={cn('flex items-center gap-2 text-xs font-semibold', inReview ? 'text-amber-900' : 'text-emerald-900')}>
-            {inReview ? <Clock size={16} /> : <CheckCircle2 size={16} />}
+          <p
+            className={cn(
+              'flex items-center gap-2 text-xs font-semibold',
+              inReview
+                ? 'text-amber-900'
+                : rejected
+                  ? 'text-rose-900'
+                  : verified
+                    ? 'text-emerald-900'
+                    : 'text-muted-foreground',
+            )}
+          >
+            {inReview ? (
+              <Clock size={16} />
+            ) : rejected ? (
+              <AlertTriangle size={16} />
+            ) : verified ? (
+              <CheckCircle2 size={16} />
+            ) : (
+              <FileText size={16} />
+            )}
             {inReview
-              ? `${inReview} document is waiting for admin review.`
-              : 'Your teacher verification is complete.'}
+              ? `${inReview} document${inReview === 1 ? '' : 's'} waiting for admin review.`
+              : rejected
+                ? `Your verification was returned${current.reviewNote ? `: ${current.reviewNote}` : '.'}`
+                : verified
+                  ? 'Your teacher verification is complete.'
+                  : 'No verification documents yet. Upload your ID, qualification and safeguarding certificate.'}
           </p>
           <Button size="sm" variant="outline" onClick={() => setVerifyOpen(true)}>
-            View verification
+            {verified ? 'View verification' : 'Submit documents'}
           </Button>
         </Card>
       </div>
@@ -1181,40 +1795,65 @@ export function TeacherSettings() {
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {[
-              { label: 'Identity', value: 'Verified · Mar 2024' },
-              { label: 'Qualifications', value: 'Verified · Mar 2024' },
-              { label: 'Safeguarding', value: 'Verified · Jan 2026' },
-              { label: 'Classroom observation', value: 'Passed · Feb 2026' },
-            ].map((check) => (
-              <div key={check.label} className="flex items-start gap-2 rounded-xl border border-border/70 p-3">
-                <BadgeCheck size={16} className="mt-0.5 shrink-0 text-emerald-600" />
-                <div>
-                  <p className="text-xs font-bold text-foreground">{check.label}</p>
-                  <p className="text-[10px] text-muted-foreground">{check.value}</p>
+            {DOC_TYPES.map((type) => {
+              const summary = typeState(current.docs, type)
+              return (
+                <div key={type} className="flex items-start gap-2 rounded-xl border border-border/70 p-3">
+                  {summary.icon === 'approved' ? (
+                    <BadgeCheck size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                  ) : summary.icon === 'pending' ? (
+                    <Clock size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                  ) : summary.icon === 'rejected' ? (
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0 text-rose-600" />
+                  ) : (
+                    <FileText size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <div>
+                    <p className="text-xs font-bold text-foreground">{type}</p>
+                    <p className="text-[10px] text-muted-foreground">{summary.label}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
+
+          {rejected && current.reviewNote ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-semibold text-rose-900">
+              Reviewer note: {current.reviewNote}
+            </div>
+          ) : null}
 
           <div>
             <p className="mb-2 text-xs font-bold text-foreground">Documents</p>
-            <div className="divide-y divide-border/70 rounded-xl border border-border/70">
-              {docs.map((doc) => (
-                <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileText size={14} className="shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="truncate text-[11px] font-semibold text-foreground">{doc.name}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {doc.type} · added {doc.added}
-                      </p>
+            {current.docs.length ? (
+              <div className="divide-y divide-border/70 rounded-xl border border-border/70">
+                {current.docs.map((doc) => (
+                  <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileText size={14} className="shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <p className="truncate text-[11px] font-semibold text-foreground">{doc.name}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {doc.type} · added {doc.added}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {doc.storagePath ? (
+                        <Button size="sm" variant="ghost" onClick={() => viewDocument(doc)}>
+                          View
+                        </Button>
+                      ) : null}
+                      <Badge tone={DOC_STATUS_TONE[doc.status]}>{DOC_STATUS_LABEL[doc.status]}</Badge>
                     </div>
                   </div>
-                  <Badge tone={doc.status === 'Approved' ? 'success' : 'warn'}>{doc.status}</Badge>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl border border-dashed border-border/70 p-4 text-center text-[11px] text-muted-foreground">
+                Nothing uploaded yet. Start with your government-issued ID.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
@@ -1223,22 +1862,44 @@ export function TeacherSettings() {
               Upload a certificate, transcript or safeguarding renewal. The admin team reviews new documents within one
               working day.
             </p>
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
-              <Input
-                label="Document name"
-                value={docName}
-                onChange={(event) => setDocName(event.target.value)}
-                placeholder="e.g. Safeguarding renewal.pdf"
-                className="h-9 text-xs"
-              />
-              <Select label="Type" value={docType} onChange={(event) => setDocType(event.target.value)} className="h-9 text-xs">
-                {['Qualification', 'Identity', 'Safeguarding', 'Other'].map((type) => (
-                  <option key={type}>{type}</option>
-                ))}
-              </Select>
-              <Button size="sm" variant="role" onClick={addDocument} disabled={!docName.trim()}>
-                <Plus size={12} /> Submit
-              </Button>
+            <div className="mt-2 space-y-2">
+              {verificationConfigured ? (
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    aria-label="Verification document file"
+                    onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                    className="block w-full rounded-xl border border-border/70 bg-card px-3 py-2 text-[11px] text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-role-soft file:px-3 file:py-1.5 file:text-[11px] file:font-bold file:text-role-ink"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    PDF, PNG or JPEG · up to 10 MB{file ? ` · ${file.name}` : ''}
+                  </p>
+                </div>
+              ) : null}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
+                <Input
+                  label="Document name"
+                  value={docName}
+                  onChange={(event) => setDocName(event.target.value)}
+                  placeholder="e.g. Safeguarding renewal.pdf"
+                  className="h-9 text-xs"
+                />
+                <Select label="Type" value={docType} onChange={(event) => setDocType(event.target.value)} className="h-9 text-xs">
+                  {DOC_TYPES.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </Select>
+                <Button
+                  size="sm"
+                  variant="role"
+                  onClick={addDocument}
+                  disabled={saving || (verificationConfigured ? !file : !docName.trim())}
+                >
+                  <Plus size={12} /> {saving ? 'Uploading…' : 'Submit'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
