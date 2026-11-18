@@ -123,6 +123,7 @@ export type Action =
   | { type: 'CREATE_THREAD'; thread: Thread }
   | { type: 'READ_THREAD'; threadId: string }
   | { type: 'BOOK_TUTOR'; booking: Booking }
+  | { type: 'POST_TUTOR_REQUEST'; request: TutorRequest }
   | { type: 'ACCEPT_REQUEST'; id: string }
   | { type: 'DECLINE_REQUEST'; id: string }
   | { type: 'ADD_POINTS'; amount: number }
@@ -298,6 +299,8 @@ function reducer(state: AppState, action: Action): AppState {
       }
     case 'BOOK_TUTOR':
       return { ...state, bookings: [action.booking, ...state.bookings] }
+    case 'POST_TUTOR_REQUEST':
+      return { ...state, tutorRequests: [action.request, ...state.tutorRequests] }
     case 'ACCEPT_REQUEST': {
       const request = state.tutorRequests.find((r) => r.id === action.id)
       if (!request) return state

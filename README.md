@@ -233,7 +233,7 @@ folder and every `.env*` file except `.env.example` are git-ignored.
 
 ## Database
 
-Apply `supabase/migrations/0001` → `0009` to a Supabase project (SQL editor or CLI):
+Apply `supabase/migrations/0001` → `0010` to a Supabase project (SQL editor or CLI):
 
 - `profiles` — one row per account: full name, phone, role (fixed by RLS), created_at.
 - `user_state` — per-user JSON blob for the whole app state, with self read/insert/update policies.
@@ -266,6 +266,16 @@ Apply `supabase/migrations/0001` → `0009` to a Supabase project (SQL editor or
   `reviewed_by`/`reviewed_at` are stamped by the database. Uploading a new document reopens an approved
   or rejected verification for review. The admin queue is `/admin/verifications`.
   `src/lib/verification.ts` is the only client path to these tables.
+- Bookings and tutor requests (0010) are `bookings` (owner, requester name, tutor snapshot, subject,
+  slot, rate, audience, optional child, status `upcoming`/`completed`/`cancelled`) and
+  `tutor_requests` (student, level, topic, rate, specialist flag, preferred time, status
+  `open`/`accepted`/`declined`, acceptor). A trigger stamps the requester from the session and the
+  display name from `profiles`, forces every booking to start `upcoming`, and only lets the owner
+  cancel — any other edit is refused. Booking a child requires guardianship. Only a teacher or admin
+  can answer a request, only while it is still open, never their own, and the content is immutable:
+  the trigger writes `accepted_by`/`accepted_by_name`/`accepted_at`. Teachers see open requests plus
+  their own accepted ones. `src/lib/bookings.ts` is the client path; the learner side is
+  `/senior/tutoring` and the teacher side is `/teacher/tutoring`.
 - Admin role is stored on `profiles.role = 'admin'`; no policy lets a user set it themselves.
 
 ## Payments and plans

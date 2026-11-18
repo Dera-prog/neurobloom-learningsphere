@@ -90,6 +90,13 @@ import {
   type MyVerification,
   type VerificationDoc,
 } from '../lib/verification'
+import {
+  bookingsConfigured,
+  loadAcceptedSessions,
+  loadOpenRequests,
+  respondToRequest,
+  type TutorRequestRecord,
+} from '../lib/bookings'
 
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -101,6 +108,115 @@ const monthGrowth = lastMonthEarnings?.value
   : 0
 const latestPayout = payoutRows[0]
 const availableBalance = Math.round(thisMonthGross * 0.85)
+
+interface TutorRequestView {
+  id: string
+  studentName: string
+  level: string
+  topic: string
+  rate: number
+  specialist: boolean
+  preferredTime: string
+  acceptedByName: string
+  real: boolean
+}
+
+function toView(row: TutorRequestRecord): TutorRequestView {
+  return {
+    id: row.id,
+    studentName: row.studentName,
+    level: row.level,
+    topic: row.topic,
+    rate: row.rate,
+    specialist: row.specialist,
+    preferredTime: row.preferredTime,
+    acceptedByName: row.acceptedByName,
+    real: true,
+  }
+}
+
+/**
+ * Open requests from the teacher pool plus the sessions this teacher accepted.
+ * The seeded sample appears only while the tables cannot be reached; an empty
+ * live list stays empty.
+ */
+function useTutorRequests() {
+  const { state, dispatch } = useApp()
+  const toast = useToast()
+  const { profile } = useAuth()
+  const teacherId = profile?.id
+  const [open, setOpen] = useState<TutorRequestRecord[] | null>(null)
+  const [sessions, setSessions] = useState<TutorRequestRecord[] | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  const reload = useCallback(async () => {
+    if (!bookingsConfigured || !teacherId) {
+      setLoaded(true)
+      return
+    }
+    const [rows, mine] = await Promise.all([loadOpenRequests(), loadAcceptedSessions(teacherId)])
+    if (rows) setOpen(rows)
+    if (mine) setSessions(mine)
+    setLoaded(true)
+  }, [teacherId])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const requests: TutorRequestView[] = !loaded
+    ? []
+    : open
+      ? open.map(toView)
+      : state.tutorRequests.map((r) => ({
+        id: r.id,
+        studentName: r.student,
+        level: r.level,
+        topic: r.topic,
+        rate: r.rate,
+        specialist: Boolean(r.specialist),
+        preferredTime: '',
+        acceptedByName: '',
+        real: false,
+      }))
+
+  const accepted: TutorRequestView[] = !loaded
+    ? []
+    : sessions
+      ? sessions.map(toView)
+      : state.acceptedSessions.map((s) => ({
+        id: s.id,
+        studentName: s.student,
+        level: s.level,
+        topic: s.topic,
+        rate: s.rate,
+        specialist: false,
+        preferredTime: s.when,
+        acceptedByName: '',
+        real: false,
+      }))
+
+  const answer = async (request: TutorRequestView, decision: 'accepted' | 'declined') => {
+    if (request.real) {
+      const result = await respondToRequest(request.id, decision)
+      if (!result.ok) {
+        toast('Could not update the request', { description: result.error, tone: 'warn' })
+        return
+      }
+      void reload()
+    } else {
+      dispatch({ type: decision === 'accepted' ? 'ACCEPT_REQUEST' : 'DECLINE_REQUEST', id: request.id })
+    }
+    toast(
+      decision === 'accepted' ? 'Session accepted' : 'Request declined',
+      decision === 'accepted'
+        ? `${request.studentName} · ${request.preferredTime || 'time to agree'}`
+        : 'The student can request another tutor.',
+    )
+  }
+
+  return { requests, accepted, answer }
+}
 
 export function TeacherHome() {
   const { state, dispatch } = useApp()
@@ -130,7 +246,7 @@ export function TeacherHome() {
 
   const liveClass = state.teacherClasses.find((c) => c.status === 'live')
   const students = state.teacherClasses.reduce((sum, c) => sum + c.students, 0)
-  const requests = state.tutorRequests
+  const { requests, answer } = useTutorRequests()
 
   return (
     <RoleLayout role="teacher">
@@ -264,31 +380,17 @@ export function TeacherHome() {
                 {requests.map((r) => (
                   <div key={r.id} className="rounded-xl border border-border/70 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-bold text-foreground">{r.student}</p>
+                      <p className="truncate text-xs font-bold text-foreground">{r.studentName}</p>
                       <span className="text-[10px] font-bold text-role-ink">{naira(r.rate)}</span>
                     </div>
                     <p className="text-[10px] text-muted-foreground">{r.level} · {r.topic}</p>
+                    {r.preferredTime ? <p className="text-[10px] text-muted-foreground">Prefers {r.preferredTime.toLowerCase()}</p> : null}
                     {r.specialist ? <Badge tone="purple" className="mt-1.5">Specialist support</Badge> : null}
                     <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="role"
-                        className="flex-1"
-                        onClick={() => {
-                          dispatch({ type: 'ACCEPT_REQUEST', id: r.id })
-                          toast('Session accepted', `${r.student} is booked for tomorrow at 4:00 PM.`)
-                        }}
-                      >
+                      <Button size="sm" variant="role" className="flex-1" onClick={() => void answer(r, 'accepted')}>
                         Accept
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          dispatch({ type: 'DECLINE_REQUEST', id: r.id })
-                          toast('Request declined', 'The student has been notified.')
-                        }}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => void answer(r, 'declined')}>
                         Decline
                       </Button>
                     </div>
@@ -1148,63 +1250,57 @@ export function TeacherAssignments() {
 
 export function TeacherTutoring() {
   const { state, dispatch } = useApp()
-  const toast = useToast()
+  const { requests, accepted, answer } = useTutorRequests()
+  const confirmedValue = accepted.reduce((sum, session) => sum + session.rate, 0)
 
   return (
     <RoleLayout role="teacher">
       <PageHeader
         title="Private tutoring"
         subtitle="Accept requests and manage one-on-one sessions"
-        badge={<Badge tone="role">{state.acceptedSessions.length} confirmed</Badge>}
+        badge={<Badge tone="role">{accepted.length} confirmed</Badge>}
         actions={<HeaderActions role="teacher" />}
       />
       <div className="mx-auto max-w-[1200px] space-y-5 p-4 sm:p-6">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard label="New requests" value={state.tutorRequests.length} icon={GraduationCap} color="#10b981" soft="#ecfdf5" sub="Respond within 24h" />
-          <StatCard label="Confirmed" value={state.acceptedSessions.length} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub="Upcoming sessions" />
-          <StatCard label="Tutoring rate" value={naira(15000, true)} icon={Wallet} color="#f59e0b" soft="#fffbeb" sub="Per hour" />
-          <StatCard label="This month" value="₦38k" icon={TrendingUp} color="#0ea5e9" soft="#e8f4fd" trend={{ value: '14%' }} />
+          <StatCard label="New requests" value={requests.length} icon={GraduationCap} color="#10b981" soft="#ecfdf5" sub="Respond within 24h" />
+          <StatCard label="Confirmed" value={accepted.length} icon={CheckCircle2} color="#6c3fc5" soft="#f0eefb" sub="Upcoming sessions" />
+          <StatCard label="Confirmed value" value={naira(confirmedValue, true)} icon={Wallet} color="#f59e0b" soft="#fffbeb" sub="At the requested rates" />
+          <StatCard
+            label="Average request"
+            value={requests.length ? naira(Math.round(requests.reduce((sum, r) => sum + r.rate, 0) / requests.length), true) : '—'}
+            icon={TrendingUp}
+            color="#0ea5e9"
+            soft="#e8f4fd"
+            sub="Across open requests"
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
           <SectionCard title="Requests" subtitle="Students waiting for your reply" icon={GraduationCap}>
             <div className="space-y-3">
-              {state.tutorRequests.map((r) => (
+              {requests.map((r) => (
                 <Card key={r.id} className="p-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-xs font-bold text-foreground">{r.student}</p>
+                      <p className="text-xs font-bold text-foreground">{r.studentName}</p>
                       <p className="text-[10px] text-muted-foreground">{r.level} · {r.topic}</p>
+                      {r.preferredTime ? <p className="text-[10px] text-muted-foreground">Prefers {r.preferredTime.toLowerCase()}</p> : null}
                     </div>
                     <span className="text-sm font-extrabold text-foreground">{naira(r.rate)}</span>
                   </div>
                   {r.specialist ? <Badge tone="purple" className="mt-2">Specialist support</Badge> : null}
                   <div className="mt-3 flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="role"
-                      className="flex-1"
-                      onClick={() => {
-                        dispatch({ type: 'ACCEPT_REQUEST', id: r.id })
-                        toast('Session accepted', `${r.student} is booked for tomorrow at 4:00 PM.`)
-                      }}
-                    >
+                    <Button size="sm" variant="role" className="flex-1" onClick={() => void answer(r, 'accepted')}>
                       Accept request
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        dispatch({ type: 'DECLINE_REQUEST', id: r.id })
-                        toast('Request declined', 'The student can request another tutor.')
-                      }}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => void answer(r, 'declined')}>
                       Decline
                     </Button>
                   </div>
                 </Card>
               ))}
-              {state.tutorRequests.length === 0 ? (
+              {requests.length === 0 ? (
                 <EmptyState emoji="🌿" title="No new requests" description="New tutoring requests will appear here." />
               ) : null}
             </div>
@@ -1213,17 +1309,17 @@ export function TeacherTutoring() {
           <div className="space-y-5">
             <SectionCard title="Confirmed sessions" subtitle="Your tutoring calendar" icon={CalendarDays}>
               <div className="space-y-2.5">
-                {state.acceptedSessions.map((s) => (
+                {accepted.map((s) => (
                   <div key={s.id} className="rounded-xl border border-border/70 p-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-foreground">{s.student}</p>
-                      <Badge tone="success">{s.status}</Badge>
+                      <p className="text-xs font-bold text-foreground">{s.studentName}</p>
+                      <Badge tone="success">confirmed</Badge>
                     </div>
                     <p className="text-[10px] text-muted-foreground">{s.level} · {s.topic}</p>
-                    <p className="mt-1 text-[10px] font-semibold text-role-ink">{s.when} · {naira(s.rate)}</p>
+                    <p className="mt-1 text-[10px] font-semibold text-role-ink">{s.preferredTime || 'Time to agree'} · {naira(s.rate)}</p>
                   </div>
                 ))}
-                {state.acceptedSessions.length === 0 ? (
+                {accepted.length === 0 ? (
                   <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-[11px] text-muted-foreground">
                     Accept a request to fill your calendar.
                   </p>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -22,7 +22,7 @@ import { HeaderActions, RoleBadge, RoleLayout } from '../components/layout'
 import { Messenger } from '../components/chat'
 import { AssignmentModal, QuizModal } from '../components/assignment'
 import { LessonPlayerModal, LiveRoomModal } from '../components/lesson'
-import { TutorBookingModal, TutorSummaryRow } from '../components/tutoring'
+import { TutorBookingModal, TutorRequestModal, TutorSummaryRow } from '../components/tutoring'
 import { SubjectExplorerModal } from '../components/curriculum'
 import type { SubjectCurriculum } from '../data/curriculum'
 import { subjectBySubjectId } from '../data/curriculum'
@@ -53,6 +53,58 @@ import {
   upcomingExams,
 } from '../data/content'
 import { cn, daysUntil, downloadText, greeting, longDate, nextWaecDate, naira } from '../lib/utils'
+import {
+  bookingsConfigured,
+  cancelBooking,
+  loadMyBookings,
+  loadMyRequests,
+  type BookingRecord,
+  type TutorRequestRecord,
+} from '../lib/bookings'
+
+function useMyTutoring() {
+  const { state } = useApp()
+  const { profile } = useAuth()
+  const [bookings, setBookings] = useState<BookingRecord[] | null>(null)
+  const [requests, setRequests] = useState<TutorRequestRecord[] | null>(null)
+  const [loaded, setLoaded] = useState(false)
+  const userId = profile?.id
+
+  const reload = useCallback(async () => {
+    if (!bookingsConfigured || !userId) {
+      setLoaded(true)
+      return
+    }
+    const [bookingRows, requestRows] = await Promise.all([loadMyBookings(userId), loadMyRequests(userId)])
+    if (bookingRows) setBookings(bookingRows)
+    if (requestRows) setRequests(requestRows)
+    setLoaded(true)
+  }, [userId])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const demoBookings: BookingRecord[] = state.bookings.map((b) => ({
+    id: b.id,
+    tutorName: b.tutorName,
+    tutorEmoji: b.tutorEmoji,
+    subject: b.subject,
+    when: b.when,
+    rate: b.rate,
+    audience: b.audience,
+    childId: null,
+    notes: b.notes ?? '',
+    status: b.status,
+    createdAt: '',
+  }))
+
+  return {
+    bookings: loaded ? bookings ?? demoBookings : [],
+    requests: loaded ? requests ?? [] : [],
+    reload,
+  }
+}
 
 const seniorClasses = [
   { id: 'snc1', subject: 'Mathematics', teacher: 'Dr. Kelechi Azu', time: '9:00 AM', duration: '1 hr', emoji: '📐', color: '#6c3fc5', soft: '#f0eefb', live: true },
@@ -75,6 +127,7 @@ export function SeniorHome() {
   const [assignmentId, setAssignmentId] = useState<string | null>(null)
   const [booking, setBooking] = useState(false)
   const [subject, setSubject] = useState<SubjectCurriculum | null>(null)
+  const { bookings: allBookings, reload: reloadBookings } = useMyTutoring()
 
   if (profile?.role === 'senior' && state.newAccount) {
     return <NewUserDashboard role="senior" />
@@ -83,7 +136,7 @@ export function SeniorHome() {
   const waec = daysUntil(nextWaecDate())
   const assignments = state.assignments.filter((a) => a.stage === 'senior')
   const pending = assignments.filter((a) => a.status === 'pending')
-  const seniorBookings = state.bookings.filter((b) => b.audience === 'senior')
+  const seniorBookings = allBookings.filter((b) => b.audience === 'senior')
   const upcomingBookings = seniorBookings.filter((b) => b.status === 'upcoming')
   const nextBooking = upcomingBookings[0]
   const average = performanceTrend[performanceTrend.length - 1].score
@@ -383,7 +436,7 @@ export function SeniorHome() {
         soft="var(--role-soft)"
       />
       <AssignmentModal assignmentId={assignmentId} open={Boolean(assignmentId)} onClose={() => setAssignmentId(null)} />
-      <TutorBookingModal open={booking} onClose={() => setBooking(false)} tutors={seniorTutors} audience="senior" />
+      <TutorBookingModal open={booking} onClose={() => setBooking(false)} tutors={seniorTutors} audience="senior" onSaved={reloadBookings} />
       <SubjectExplorerModal subject={subject} open={Boolean(subject)} onClose={() => setSubject(null)} />
     </RoleLayout>
   )
@@ -719,10 +772,22 @@ export function SeniorExams() {
 }
 
 export function SeniorTutoring() {
-  const { state } = useApp()
+  const toast = useToast()
   const [booking, setBooking] = useState(false)
+  const [requesting, setRequesting] = useState(false)
   const [tutorId, setTutorId] = useState<string | undefined>(undefined)
-  const bookings = state.bookings.filter((b) => b.audience === 'senior')
+  const { bookings: allBookings, requests, reload } = useMyTutoring()
+  const bookings = allBookings.filter((b) => b.audience === 'senior')
+
+  const cancel = async (bookingId: string) => {
+    const result = await cancelBooking(bookingId)
+    if (!result.ok) {
+      toast('Could not cancel', { description: result.error, tone: 'warn' })
+      return
+    }
+    toast('Session cancelled', 'The tutor has been notified.')
+    void reload()
+  }
 
   return (
     <RoleLayout role="senior">
@@ -739,9 +804,14 @@ export function SeniorTutoring() {
             <p className="mt-1 text-lg font-extrabold">Book any tutor. Cancel up to 4 hours before.</p>
             <p className="text-xs text-white/70">Sessions are recorded for revision and shared with your parent.</p>
           </div>
-          <Button className="!bg-white !text-[#0369a1] hover:!bg-white/90" onClick={() => { setTutorId(undefined); setBooking(true) }}>
-            <GraduationCap size={15} /> Book a session
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button className="!bg-white !text-[#0369a1] hover:!bg-white/90" onClick={() => { setTutorId(undefined); setBooking(true) }}>
+              <GraduationCap size={15} /> Book a session
+            </Button>
+            <Button variant="ghost" className="text-white hover:bg-white/15 hover:text-white" onClick={() => setRequesting(true)}>
+              Request a tutor
+            </Button>
+          </div>
         </Card>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
@@ -764,16 +834,50 @@ export function SeniorTutoring() {
                       <div className="flex items-center gap-2">
                         <span aria-hidden>{b.tutorEmoji}</span>
                         <p className="flex-1 truncate text-xs font-bold text-foreground">{b.tutorName}</p>
-                        <Badge tone="success">{b.status}</Badge>
+                        <Badge tone={b.status === 'upcoming' ? 'success' : 'neutral'}>{b.status}</Badge>
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground">{b.subject} · {b.when}</p>
-                      <p className="text-[10px] text-muted-foreground">{naira(b.rate)} per session</p>
+                      <div className="mt-1 flex items-center justify-between">
+                        <p className="text-[10px] text-muted-foreground">{naira(b.rate)} per session</p>
+                        {b.status === 'upcoming' ? (
+                          <button type="button" onClick={() => void cancel(b.id)} className="text-[10px] font-bold text-muted-foreground underline hover:text-foreground">
+                            Cancel
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
                   No sessions booked yet. Pick a tutor to get started.
+                </p>
+              )}
+            </SectionCard>
+
+            <SectionCard title="My requests" subtitle="Tutors answer within 24 hours" icon={GraduationCap}>
+              {requests.length ? (
+                <div className="space-y-2.5">
+                  {requests.map((r) => (
+                    <div key={r.id} className="rounded-xl border border-border/70 p-3">
+                      <div className="flex items-center gap-2">
+                        <p className="flex-1 truncate text-xs font-bold text-foreground">{r.topic}</p>
+                        <Badge tone={r.status === 'accepted' ? 'success' : r.status === 'declined' ? 'danger' : 'warn'}>
+                          {r.status}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {r.level} · {r.preferredTime || 'Time to agree'} · {naira(r.rate)}/hr
+                      </p>
+                      {r.status === 'accepted' && r.acceptedByName ? (
+                        <p className="mt-1 text-[10px] font-semibold text-emerald-700">Accepted by {r.acceptedByName}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+                  No requests posted yet. Use “Request a tutor” when the right tutor isn’t in the list.
                 </p>
               )}
             </SectionCard>
@@ -792,7 +896,8 @@ export function SeniorTutoring() {
         </div>
       </div>
 
-      <TutorBookingModal open={booking} onClose={() => setBooking(false)} tutors={seniorTutors} initialTutorId={tutorId} audience="senior" />
+      <TutorBookingModal open={booking} onClose={() => setBooking(false)} tutors={seniorTutors} initialTutorId={tutorId} audience="senior" onSaved={reload} />
+      <TutorRequestModal open={requesting} onClose={() => setRequesting(false)} onSaved={reload} />
     </RoleLayout>
   )
 }

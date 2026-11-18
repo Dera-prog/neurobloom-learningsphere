@@ -3,10 +3,21 @@ import { CalendarDays, Check, ChevronRight, Clock, GraduationCap, ShieldCheck, S
 import type { ChildId, Tutor } from '../data/content'
 import { useApp } from '../store/store'
 import { cn, naira, uid } from '../lib/utils'
-import { Avatar, Badge, Button, Input, Modal, TextArea } from './ui'
+import { Avatar, Badge, Button, Input, Modal, Select, TextArea, Toggle } from './ui'
 import { useToast } from './toast'
 import { useAuth } from '../lib/auth'
 import { looksLikeEmail, sendConfirmationEmail } from '../lib/email'
+import { bookingsConfigured, createBooking, createTutorRequest } from '../lib/bookings'
+
+export const REQUEST_LEVELS = ['JSS1', 'JSS2', 'JSS3', 'SSS1', 'SSS2', 'SSS3', 'Special needs']
+export const REQUEST_TIMES = [
+  'Weekday afternoons',
+  'Weekday evenings',
+  'Saturday mornings',
+  'Saturday afternoons',
+  'Sunday afternoons',
+]
+export const REQUEST_RATES = [12000, 15000, 18000, 22000]
 
 export function TutorBookingModal({
   open,
@@ -15,6 +26,7 @@ export function TutorBookingModal({
   initialTutorId,
   audience,
   child,
+  onSaved,
 }: {
   open: boolean
   onClose: () => void
@@ -22,6 +34,7 @@ export function TutorBookingModal({
   initialTutorId?: string
   audience: 'senior' | 'parent'
   child?: ChildId
+  onSaved?: () => void
 }) {
   const { dispatch } = useApp()
   const toast = useToast()
@@ -31,6 +44,7 @@ export function TutorBookingModal({
   const [slot, setSlot] = useState('')
   const [notes, setNotes] = useState('')
   const [email, setEmail] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const tutor = tutors.find((t) => t.id === tutorId) ?? tutors[0]
 
@@ -61,27 +75,48 @@ export function TutorBookingModal({
       toast('Add a confirmation email', { description: 'We send the session details there.', tone: 'warn' })
       return
     }
-    dispatch({
-      type: 'BOOK_TUTOR',
-      booking: {
-        id: uid('booking'),
+    const details = `${tutor.name} · ${subject} · ${slot}`
+
+    if (bookingsConfigured) {
+      setSaving(true)
+      const result = await createBooking({
         tutorName: tutor.name,
         tutorEmoji: tutor.emoji,
         subject,
         when: slot,
         rate: tutor.rate,
         audience,
-        status: 'upcoming',
-        child,
-        notes: notes.trim() || undefined,
-      },
-    })
-    onClose()
-
-    if (!configured) {
-      toast('Tutor session booked', { description: `${tutor.name} · ${subject} · ${slot}`, tone: 'success' })
+        notes: notes.trim(),
+      })
+      setSaving(false)
+      if (!result.ok) {
+        toast('Booking not saved', { description: result.error, tone: 'warn' })
+        return
+      }
+      onSaved?.()
+      onClose()
+    } else {
+      dispatch({
+        type: 'BOOK_TUTOR',
+        booking: {
+          id: uid('booking'),
+          tutorName: tutor.name,
+          tutorEmoji: tutor.emoji,
+          subject,
+          when: slot,
+          rate: tutor.rate,
+          audience,
+          status: 'upcoming',
+          child,
+          notes: notes.trim() || undefined,
+        },
+      })
+      onClose()
+      toast('Tutor session booked', { description: details, tone: 'success' })
       return
     }
+
+    if (!configured) return
 
     const result = await sendConfirmationEmail('booking', email, {
       tutorName: tutor.name,
@@ -115,8 +150,8 @@ export function TutorBookingModal({
             <Button variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="role" size="sm" onClick={book}>
-              <Check size={13} /> Confirm booking
+            <Button variant="role" size="sm" onClick={book} disabled={saving}>
+              <Check size={13} /> {saving ? 'Saving…' : 'Confirm booking'}
             </Button>
           </div>
         </div>
@@ -224,6 +259,121 @@ export function TutorBookingModal({
           <ShieldCheck size={14} className="mt-0.5 shrink-0" />
           Sessions are recorded for safety and can be reviewed by a parent in the lesson history.
         </div>
+      </div>
+    </Modal>
+  )
+}
+
+export function TutorRequestModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean
+  onClose: () => void
+  onSaved?: () => void
+}) {
+  const { dispatch } = useApp()
+  const { profile } = useAuth()
+  const toast = useToast()
+  const [level, setLevel] = useState('SSS3')
+  const [topic, setTopic] = useState('')
+  const [rate, setRate] = useState(REQUEST_RATES[1])
+  const [time, setTime] = useState(REQUEST_TIMES[0])
+  const [specialist, setSpecialist] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setTopic('')
+    setSpecialist(false)
+  }, [open])
+
+  const post = async () => {
+    if (topic.trim().length < 3) {
+      toast('Describe the help you need', { description: 'e.g. “WAEC electricity questions”.', tone: 'warn' })
+      return
+    }
+    if (bookingsConfigured) {
+      setSaving(true)
+      const result = await createTutorRequest({ level, topic, rate, specialist, preferredTime: time })
+      setSaving(false)
+      if (!result.ok) {
+        toast('Request not posted', { description: result.error, tone: 'warn' })
+        return
+      }
+      onSaved?.()
+    } else {
+      dispatch({
+        type: 'POST_TUTOR_REQUEST',
+        request: {
+          id: uid('request'),
+          student: profile?.full_name?.trim() || 'You',
+          level,
+          topic: topic.trim(),
+          rate,
+          specialist: specialist || undefined,
+        },
+      })
+    }
+    onClose()
+    toast('Request posted', { description: 'A teacher will answer within 24 hours.' })
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Request a tutor"
+      subtitle="Tell the teacher pool what you need and when you can learn."
+      size="lg"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="role" size="sm" onClick={post} disabled={saving}>
+            <Check size={13} /> {saving ? 'Posting…' : 'Post request'}
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Select label="Level" value={level} onChange={(event) => setLevel(event.target.value)}>
+            {REQUEST_LEVELS.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
+          </Select>
+          <Select label="When suits you" value={time} onChange={(event) => setTime(event.target.value)}>
+            {REQUEST_TIMES.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
+          </Select>
+        </div>
+
+        <Input
+          label="What do you need help with?"
+          value={topic}
+          onChange={(event) => setTopic(event.target.value)}
+          placeholder="e.g. WAEC Maths: electricity and calculus"
+          hint="A short topic is enough — the teacher will ask for detail."
+        />
+
+        <Select label="What you will pay per hour" value={String(rate)} onChange={(event) => setRate(Number(event.target.value))}>
+          {REQUEST_RATES.map((option) => (
+            <option key={option} value={option}>
+              {naira(option)} / hour
+            </option>
+          ))}
+        </Select>
+
+        <Toggle
+          checked={specialist}
+          onChange={() => setSpecialist((value) => !value)}
+          label="Specialist support"
+          description="Ask for a tutor trained for ASD, dyslexia or other learning needs."
+        />
       </div>
     </Modal>
   )
