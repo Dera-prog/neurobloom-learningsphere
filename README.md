@@ -233,7 +233,7 @@ folder and every `.env*` file except `.env.example` are git-ignored.
 
 ## Database
 
-Apply `supabase/migrations/0001` → `0010` to a Supabase project (SQL editor or CLI):
+Apply `supabase/migrations/0001` → `0011` to a Supabase project (SQL editor or CLI):
 
 - `profiles` — one row per account: full name, phone, role (fixed by RLS), created_at.
 - `user_state` — per-user JSON blob for the whole app state, with self read/insert/update policies.
@@ -276,6 +276,13 @@ Apply `supabase/migrations/0001` → `0010` to a Supabase project (SQL editor or
   the trigger writes `accepted_by`/`accepted_by_name`/`accepted_at`. Teachers see open requests plus
   their own accepted ones. `src/lib/bookings.ts` is the client path; the learner side is
   `/senior/tutoring` and the teacher side is `/teacher/tutoring`.
+- Support tickets (0011) are complaints sent to the Admin Manager desk. A trigger stamps the
+  requester from the session and copies the display name and role from `profiles`, so a crafted
+  request cannot file as someone else or arrive pre-resolved. The requester cannot edit, withdraw or
+  answer their own ticket; only an admin can reply or move it to `waiting`/`resolved`, and the
+  reviewer name and time are stamped by the database — that is the reply the requester sees. The
+  teacher sidebar box and the parent Special Support form file tickets; `/admin/support` lists the
+  queue, replies and status changes. `src/lib/support.ts` is the client path.
 - Admin role is stored on `profiles.role = 'admin'`; no policy lets a user set it themselves.
 
 ## Payments and plans

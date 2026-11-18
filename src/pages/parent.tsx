@@ -87,6 +87,7 @@ import { useAuth } from '../lib/auth'
 import { NewUserDashboard } from '../components/onboarding'
 import { DailyProgressCard } from '../components/parent-daily-progress'
 import { looksLikeEmail, sendConfirmationEmail } from '../lib/email'
+import { createSupportTicket, supportConfigured } from '../lib/support'
 import { applyCoupon, clearParentAccessIntent, listMyPayments, paymentsConfigured, startCheckout, type PaymentRow } from '../lib/payments'
 
 // The guardian's own children come from signup; demo accounts keep the
@@ -2586,6 +2587,16 @@ export function ParentSupport() {
 
     const reference = `NB-${Date.now().toString(36).toUpperCase().slice(-6)}`
     setSending(true)
+
+    if (supportConfigured) {
+      const ticket = await createSupportTicket({ category: 'Special-needs support', body: message.trim() })
+      if (!ticket.ok) {
+        setSending(false)
+        toast('Support request not saved', { description: ticket.error, tone: 'warn' })
+        return
+      }
+    }
+
     dispatch({
       type: 'ADD_SUPPORT_REQUEST',
       request: {

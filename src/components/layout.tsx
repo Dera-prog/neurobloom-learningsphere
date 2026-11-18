@@ -28,6 +28,7 @@ import { orderedChildren } from '../lib/parent-children'
 import { cn, daysUntil, initials, nextWaecDate, naira } from '../lib/utils'
 import { useAuth } from '../lib/auth'
 import { addComplaint, COMPLAINT_CATEGORIES } from '../lib/complaints'
+import { createSupportTicket, loadMyTickets, supportConfigured, type SupportTicketRecord } from '../lib/support'
 import { useToast } from './toast'
 import { SpecialTools } from './focus'
 import { Avatar, Badge, RoleThemeContext, ThemeModeContext } from './ui'
@@ -227,11 +228,47 @@ function TeacherComplaintBox({ solid }: { solid: boolean }) {
   const [message, setMessage] = useState('')
   const [category, setCategory] = useState<string>(COMPLAINT_CATEGORIES[0])
   const [sent, setSent] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [tickets, setTickets] = useState<SupportTicketRecord[]>([])
+  const userId = profile?.id
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (!supportConfigured || !userId) return
+    let active = true
+    void loadMyTickets(userId).then((rows) => {
+      if (active && rows) setTickets(rows)
+    })
+    return () => {
+      active = false
+    }
+  }, [userId])
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const text = message.trim()
-    if (!text) return
+    if (!text || sending) return
+
+    if (supportConfigured) {
+      setSending(true)
+      const result = await createSupportTicket({ category, body: text })
+      setSending(false)
+      if (!result.ok) {
+        toast('Complaint not sent', { description: result.error, tone: 'warn' })
+        return
+      }
+      setMessage('')
+      setSent(true)
+      if (userId) {
+        const rows = await loadMyTickets(userId)
+        if (rows) setTickets(rows)
+      }
+      toast('Complaint sent', {
+        description: 'The Admin Manager team has it in Help & support and will reply within one working day.',
+        tone: 'success',
+      })
+      return
+    }
+
     addComplaint({
       message: text,
       category,
@@ -244,6 +281,19 @@ function TeacherComplaintBox({ solid }: { solid: boolean }) {
       tone: 'success',
     })
   }
+
+  const statusClass = (status: SupportTicketRecord['status']) =>
+    solid
+      ? status === 'resolved'
+        ? 'bg-emerald-300/20 text-emerald-100'
+        : status === 'waiting'
+          ? 'bg-sky-300/20 text-sky-100'
+          : 'bg-amber-300/20 text-amber-100'
+      : status === 'resolved'
+        ? 'bg-emerald-100 text-emerald-700'
+        : status === 'waiting'
+          ? 'bg-sky-100 text-sky-700'
+          : 'bg-amber-100 text-amber-700'
 
   return (
     <form
@@ -292,18 +342,43 @@ function TeacherComplaintBox({ solid }: { solid: boolean }) {
       </select>
       <button
         type="submit"
-        disabled={!message.trim()}
+        disabled={!message.trim() || sending}
         className={cn(
           'mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg text-[11px] font-bold transition disabled:pointer-events-none disabled:opacity-50',
           solid ? 'bg-white text-primary hover:bg-white/90' : 'bg-role text-white hover:opacity-90',
         )}
       >
-        <Send size={12} aria-hidden /> Send complaint
+        <Send size={12} aria-hidden /> {sending ? 'Sending…' : 'Send complaint'}
       </button>
       {sent ? (
         <p className={cn('mt-1.5 text-[10px] font-semibold', solid ? 'text-emerald-200' : 'text-emerald-700')} role="status">
           Sent — thank you. We’ll follow up.
         </p>
+      ) : null}
+      {tickets.length ? (
+        <div className="mt-2.5 space-y-1.5">
+          <p className={cn('text-[9px] font-bold uppercase tracking-wide', solid ? 'text-white/50' : 'text-muted-foreground')}>
+            Your recent complaints
+          </p>
+          {tickets.slice(0, 2).map((ticket) => (
+            <div key={ticket.id} className={cn('rounded-lg p-2', solid ? 'bg-white/10' : 'border border-border/70 bg-card')}>
+              <div className="flex items-center justify-between gap-1.5">
+                <p className={cn('truncate text-[10px] font-semibold', solid ? 'text-white' : 'text-foreground')}>{ticket.subject}</p>
+                <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase', statusClass(ticket.status))}>
+                  {ticket.status}
+                </span>
+              </div>
+              {ticket.reply ? (
+                <p className={cn('mt-1 text-[10px] leading-relaxed', solid ? 'text-white/70' : 'text-muted-foreground')}>
+                  <span className={cn('font-semibold', solid ? 'text-white/90' : 'text-foreground')}>
+                    {ticket.repliedByName || 'Admin team'}:
+                  </span>{' '}
+                  {ticket.reply}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
       ) : null}
     </form>
   )

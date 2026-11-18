@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -48,10 +48,17 @@ import {
   Select,
   StatCard,
   Tabs,
+  TextArea,
   Toggle,
 } from '../components/ui'
 import { useToast } from '../components/toast'
 import { readComplaints } from '../lib/complaints'
+import {
+  loadTicketQueue,
+  replyToTicket,
+  supportConfigured,
+  type SupportTicketRecord,
+} from '../lib/support'
 import {
   loadVerificationQueue,
   reviewVerification,
@@ -1357,18 +1364,94 @@ export function AdminFeedback() {
 
 type SupportTab = 'all' | SupportStatus
 
+interface TicketView {
+  key: string
+  id: string
+  subject: string
+  requester: string
+  role: string
+  priority: 'urgent' | 'high' | 'normal'
+  opened: string
+  updated: string
+  status: SupportStatus
+  excerpt: string
+  category?: string
+  reply?: string
+  repliedBy?: string
+  real: boolean
+}
+
+const roleLabels: Record<string, string> = {
+  teacher: 'Teacher',
+  parent: 'Parent',
+  junior: 'Student',
+  senior: 'Student',
+  special: 'Student',
+  admin: 'Admin',
+}
+
+function realTicketView(ticket: SupportTicketRecord): TicketView {
+  return {
+    key: ticket.id,
+    id: ticket.id.slice(0, 8).toUpperCase(),
+    subject: ticket.subject,
+    requester: ticket.requesterName,
+    role: roleLabels[ticket.requesterRole] ?? ticket.requesterRole,
+    priority: ticket.priority,
+    opened: new Date(ticket.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+    updated: new Date(ticket.updatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    status: ticket.status,
+    excerpt: ticket.body,
+    category: ticket.category,
+    reply: ticket.reply,
+    repliedBy: ticket.repliedByName,
+    real: true,
+  }
+}
+
 export function AdminSupport() {
   const toast = useToast()
   const [overrides, setOverrides] = useStored<Record<string, SupportStatus>>(SUPPORT_KEY, () => ({}))
   const [tab, setTab] = useState<SupportTab>('all')
   const [query, setQuery] = useState('')
-  // Complaints teachers send from their sidebar land at the top of this queue.
-  const [complaints] = useState(() => readComplaints())
+  const [queue, setQueue] = useState<SupportTicketRecord[] | null>(null)
+  const [loadingQueue, setLoadingQueue] = useState(supportConfigured)
+  const [replyTarget, setReplyTarget] = useState<TicketView | null>(null)
+  const [replyText, setReplyText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  const tickets = [...complaints, ...seedSupportTickets].map((ticket) => ({
-    ...ticket,
-    status: overrides[ticket.id] ?? ticket.status,
-  }))
+  const refresh = useCallback(async () => {
+    const rows = await loadTicketQueue()
+    if (rows) setQueue(rows)
+    setLoadingQueue(false)
+  }, [])
+
+  useEffect(() => {
+    if (!supportConfigured) return
+    void refresh()
+  }, [refresh])
+
+  // Without the table the console keeps its reviewed sample queue; a reachable
+  // empty queue stays empty.
+  const demoComplaints = useMemo(() => readComplaints(), [])
+  const tickets: TicketView[] = useMemo(() => {
+    if (queue) return queue.map(realTicketView)
+    if (supportConfigured && loadingQueue) return []
+    const local: TicketView[] = demoComplaints.map((ticket) => ({
+      ...ticket,
+      key: ticket.id,
+      real: false,
+      status: overrides[ticket.id] ?? ticket.status,
+    }))
+    const seeds: TicketView[] = seedSupportTickets.map((ticket) => ({
+      ...ticket,
+      key: ticket.id,
+      real: false,
+      status: overrides[ticket.id] ?? ticket.status,
+    }))
+    return [...local, ...seeds]
+  }, [queue, loadingQueue, demoComplaints, overrides])
+
   const needle = query.trim().toLowerCase()
   const visible = tickets.filter((ticket) => {
     const inTab = tab === 'all' || ticket.status === tab
@@ -1380,14 +1463,50 @@ export function AdminSupport() {
     return inTab && inQuery
   })
 
-  function setStatus(ticket: (typeof tickets)[number], status: SupportStatus) {
-    setOverrides((prev) => ({ ...prev, [ticket.id]: status }))
+  async function applyStatus(ticket: TicketView, status: SupportStatus) {
+    if (!ticket.real) {
+      setOverrides((prev) => ({ ...prev, [ticket.key]: status }))
+      const copy = {
+        open: { title: 'Ticket reopened', desc: `${ticket.requester} has been notified.` },
+        waiting: { title: 'Reply sent', desc: `We asked ${ticket.requester} for more detail on ${ticket.id}.` },
+        resolved: { title: 'Ticket resolved', desc: `${ticket.id} is closed and the requester has the outcome.` },
+      }[status]
+      toast(copy.title, { description: copy.desc, tone: status === 'resolved' ? 'success' : 'info' })
+      return
+    }
+    const result = await replyToTicket(ticket.key, { status })
+    if (!result.ok) {
+      toast('Ticket not updated', { description: result.error, tone: 'warn' })
+      return
+    }
+    await refresh()
     const copy = {
-      open: { title: 'Ticket reopened', desc: `${ticket.requester} has been notified.` },
-      waiting: { title: 'Reply sent', desc: `We asked ${ticket.requester} for more detail on ${ticket.id}.` },
-      resolved: { title: 'Ticket resolved', desc: `${ticket.id} is closed and the requester has the outcome.` },
+      open: { title: 'Ticket reopened', desc: `${ticket.requester} can see it is open again.` },
+      waiting: { title: 'Marked waiting', desc: `${ticket.id} now shows as waiting on the requester.` },
+      resolved: { title: 'Ticket resolved', desc: `${ticket.requester} can see the outcome.` },
     }[status]
     toast(copy.title, { description: copy.desc, tone: status === 'resolved' ? 'success' : 'info' })
+  }
+
+  async function sendReply() {
+    if (!replyTarget || !replyText.trim() || submitting) return
+    if (!replyTarget.real) {
+      setReplyTarget(null)
+      toast('Reply sent', { description: `Sample ticket — no account was notified.`, tone: 'info' })
+      return
+    }
+    setSubmitting(true)
+    const result = await replyToTicket(replyTarget.key, { status: 'waiting', reply: replyText.trim() })
+    setSubmitting(false)
+    if (!result.ok) {
+      toast('Reply not saved', { description: result.error, tone: 'warn' })
+      return
+    }
+    const target = replyTarget
+    setReplyTarget(null)
+    setReplyText('')
+    await refresh()
+    toast('Reply sent', { description: `${target.requester} sees it on their complaint.`, tone: 'success' })
   }
 
   return (
@@ -1419,9 +1538,17 @@ export function AdminSupport() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)]">
         <div className="space-y-2.5">
+          {supportConfigured && loadingQueue ? (
+            <p className="rounded-xl border border-dashed border-border px-3 py-10 text-center text-[11px] text-muted-foreground">
+              Loading tickets…
+            </p>
+          ) : null}
+          {!loadingQueue && !queue && supportConfigured ? (
+            <Badge tone="warn">Sample data</Badge>
+          ) : null}
           {visible.length ? (
             visible.map((ticket) => (
-              <Card key={ticket.id} className="p-3.5">
+              <Card key={ticket.key} className="p-3.5">
                 <div className="flex flex-wrap items-start gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-role-soft text-role-ink">
                     <LifeBuoy size={16} aria-hidden />
@@ -1434,22 +1561,34 @@ export function AdminSupport() {
                     </div>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
                       {ticket.id} · {ticket.requester} ({ticket.role}) · opened {ticket.opened} · updated {ticket.updated}
-                      {'category' in ticket && ticket.category ? ` · ${ticket.category}` : ''}
+                      {ticket.category ? ` · ${ticket.category}` : ''}
                     </p>
                     <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">{ticket.excerpt}</p>
+                    {ticket.reply ? (
+                      <p className="mt-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-emerald-800">
+                        <span className="font-semibold">{ticket.repliedBy || 'Admin'}:</span> {ticket.reply}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     {ticket.status === 'open' ? (
-                      <Button size="sm" variant="outline" onClick={() => setStatus(ticket, 'waiting')}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setReplyTarget(ticket)
+                          setReplyText(ticket.reply ?? '')
+                        }}
+                      >
                         <Mail size={12} /> Reply
                       </Button>
                     ) : null}
                     {ticket.status !== 'resolved' ? (
-                      <Button size="sm" variant="role" onClick={() => setStatus(ticket, 'resolved')}>
+                      <Button size="sm" variant="role" onClick={() => void applyStatus(ticket, 'resolved')}>
                         <CheckCircle2 size={12} /> Resolve
                       </Button>
                     ) : (
-                      <Button size="sm" variant="ghost" onClick={() => setStatus(ticket, 'open')}>
+                      <Button size="sm" variant="ghost" onClick={() => void applyStatus(ticket, 'open')}>
                         <RotateCcw size={12} /> Reopen
                       </Button>
                     )}
@@ -1457,9 +1596,13 @@ export function AdminSupport() {
                 </div>
               </Card>
             ))
-          ) : (
-            <EmptyState emoji="🎧" title="No tickets match" description="Try a different status or search term." />
-          )}
+          ) : !loadingQueue ? (
+            <EmptyState
+              emoji="🎧"
+              title={tickets.length ? 'No tickets match' : 'No tickets yet'}
+              description={tickets.length ? 'Try a different status or search term.' : 'Complaints sent from any dashboard land here.'}
+            />
+          ) : null}
         </div>
 
         <div className="space-y-5">
@@ -1494,6 +1637,37 @@ export function AdminSupport() {
           </Card>
         </div>
       </div>
+
+      <Modal
+        open={Boolean(replyTarget)}
+        onClose={() => setReplyTarget(null)}
+        title={`Reply to ${replyTarget?.requester ?? 'requester'}`}
+        subtitle={replyTarget ? `${replyTarget.id} · ${replyTarget.subject}` : undefined}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setReplyTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="role" size="sm" disabled={!replyText.trim() || submitting} onClick={() => void sendReply()}>
+              <Send size={12} /> {submitting ? 'Sending…' : 'Send reply'}
+            </Button>
+          </div>
+        }
+      >
+        <p className="mb-2 rounded-lg bg-muted/60 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          {replyTarget?.excerpt}
+        </p>
+        <TextArea
+          label="Reply"
+          rows={4}
+          value={replyText}
+          onChange={(event) => setReplyText(event.target.value)}
+          placeholder="Tell them what you found and what happens next…"
+        />
+        <p className="mt-2 text-[10px] text-muted-foreground">
+          The requester sees this on their dashboard, marked with your name. The ticket moves to “waiting”.
+        </p>
+      </Modal>
     </ConsolePage>
   )
 }
