@@ -5,7 +5,11 @@ import App from './App'
 import { AppStoreProvider } from './store/store'
 import { ToastProvider } from './components/toast'
 import { AuthProvider } from './lib/auth'
+import { ErrorBoundary } from './components/error-boundary'
+import { initMonitoring } from './lib/monitoring'
 import './index.css'
+
+initMonitoring()
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -19,7 +23,9 @@ createRoot(document.getElementById('root')!).render(
       <ToastProvider>
         <AuthProvider>
           <AppStoreProvider>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </AppStoreProvider>
         </AuthProvider>
       </ToastProvider>

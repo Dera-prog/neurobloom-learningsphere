@@ -227,6 +227,13 @@ pnpm activate                                # apply Supabase activation steps
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anon (public) key |
 | `VITE_PAYSTACK_PUBLIC_KEY` | Paystack test public key; without it the checkout button is disabled |
+| `VITE_SENTRY_DSN` | Optional browser error reporting; the SDK is only initialised when set |
+| `VITE_SENTRY_ENVIRONMENT` | Environment tag for browser events (defaults to `production`/`development`) |
+| `VITE_APP_VERSION` | Optional release tag attached to browser events |
+| `VITE_SENTRY_TRACES_SAMPLE_RATE` | Optional tracing sample rate; `0` (default) disables tracing |
+
+Client error reports never include cookies, headers, request bodies, query parameters or the
+signed-in user, so child names and emails stay out of Sentry.
 
 When the Supabase pair is missing the app runs in demo mode.
 
@@ -250,16 +257,20 @@ When the Supabase pair is missing the app runs in demo mode.
 | `MAILGUN_BASE_URL`, `MAILGUN_REPLY_TO` | Optional Mailgun overrides |
 | `TERMII_API_KEY` | Termii sender for guardian sign-up codes |
 | `TERMII_SENDER_ID`, `TERMII_CHANNEL`, `TERMII_BASE_URL` | Optional Termii overrides |
+| `SENTRY_DSN` | Optional server DSN; unhandled API errors are reported with a route tag |
+| `SENTRY_ENVIRONMENT` | Environment tag for server events |
 
 `/api/health` reports `{ payments, email, emailProvider, sms, smsProvider }` — booleans and provider
-names only, never key values.
+names only, never key values. `pnpm check:uptime` (or
+`node scripts/check-uptime.mjs <url>`) polls it with retries and exits non-zero when the site is
+down; point any external monitor at the same endpoint.
 
 Never prefix a secret with `VITE_` — those values are shipped to the browser. The `.secrets/`
 folder and every `.env*` file except `.env.example` are git-ignored.
 
 ## Database
 
-Apply `supabase/migrations/0001` → `0012` to a Supabase project (SQL editor or CLI):
+Apply `supabase/migrations/0001` → `0014` to a Supabase project (SQL editor or CLI):
 
 - `profiles` — one row per account: full name, phone, role (fixed by RLS), created_at.
 - `user_state` — per-user JSON blob for the whole app state, with self read/insert/update policies.
@@ -321,6 +332,24 @@ Apply `supabase/migrations/0001` → `0012` to a Supabase project (SQL editor or
   threads and the New conversation picker, falling back to seeded demo chats only when Supabase is
   not configured or the live list is unreachable (shown with a Sample badge).
 - Admin role is stored on `profiles.role = 'admin'`; no policy lets a user set it themselves.
+- The trust boundary (0013) moves the last three client-owned domains onto guarded tables:
+  - **Class membership** lives in `enrollments`. A guardian may add or withdraw their own child only
+    while the class is unclaimed (`classes.teacher_id is null`); once a teacher claims a class only
+    that teacher or an admin changes the roll. A trigger raises `42501` for anyone else.
+  - **Role changes** are guarded on `profiles`. A trigger rejects any `UPDATE` that changes `id` or
+    `role`, and an `INSERT` (sign-up) derives the role from the account's own auth metadata, clamped
+    to the five learner roles — so a crafted sign-up cannot arrive as `admin` or `teacher`. Role
+    promotion is service-role only.
+  - **Quiz scores** are `quiz_attempts`, one best score per learner and quiz. Clients call
+    `record_quiz_attempt(quiz_id, answers)`; the function grades against the server-only
+    `quiz_keys` answer key (no RLS policies, no grants), writes the row with
+    `neurobloom.quiz_writer = 'rpc'`, and returns the attempt, the best and the question count. Only
+    the owner can read attempts, and direct inserts or score edits are refused. `src/lib/quiz.ts`
+    is the client path; `scripts/export-quiz-keys.mjs` regenerates the seeded key from the
+    curriculum.
+- `rate_limit_hits` and `consume_rate_limit()` (0014) back the durable per-contact and per-IP
+  limits on guardian OTP sends. The table has no RLS policies and the function is executable only by
+  the service role; `api/_rate-limit.js` calls it and fails open if the database is unreachable.
 
 ## Payments and plans
 
@@ -346,7 +375,9 @@ the add-on as step 2.
 
 - `AppStoreProvider` hydrates the signed-in user's `user_state` row once, then autosaves changes on
   a 700 ms debounce (and even when a save fails, the next change retries).
-- With Supabase configured, the server version of `plans` wins over a stale tab.
+- With Supabase configured, the server version of `plans`, `quizScores` and `teacherClasses` wins over
+  a stale tab; quiz scores are written only through `record_quiz_attempt()`, and the saved blob
+  deliberately carries no scores or classes, only preferences, drafts and UI toggles.
 - Without Supabase, state falls back to `localStorage['neurobloom:demo:v4']`.
 - First-run onboarding uses `neurobloom:onboarding:<userId>`; complaints use
   `neurobloom:complaints:v1`; admin module actions use their own `neurobloom:admin:*` keys.
@@ -398,6 +429,35 @@ control, offline shell):
 BASE=https://neurobloom-learningsphere.vercel.app node .shots/check-pwa.mjs
 ```
 
+## Production checklist
+
+Built into the app:
+
+- Server-owned grades, attendance, class membership, roles and quiz scores, each enforced by a
+  guard trigger that rejects illegal writes with `42501` (see Database).
+- Browser and server error reporting through Sentry, enabled by DSN only; no PII is collected, and
+  an unset DSN makes every code path a no-op.
+- Durable rate limits on guardian OTP sends (per contact and per IP, stored in Postgres).
+- `/api/health` plus `pnpm check:uptime` for an internal probe.
+
+Owner-only steps (dashboard work, no code):
+
+1. **Staging project** — create a second Supabase project, apply `0001`→`0014`, and add its URL and
+   keys to a Vercel Preview environment (`VITE_SUPABASE_*`, `SUPABASE_*`). Deploy with
+   `vercel deploy` and treat the `.vercel.app` preview as the only place to test schema changes.
+2. **Backups** — on the Supabase paid tier turn on Point-in-Time Recovery for production and a
+   daily backup for staging.
+3. **Error monitoring** — create a Sentry project, copy its DSN into `VITE_SENTRY_DSN` (browser)
+   and `SENTRY_DSN` (functions) for Production and Preview separately.
+4. **Uptime** — add `https://<domain>/api/health` to an external monitor (Better Stack,
+   UptimeRobot) with a 1-minute interval and alert on non-200. The probe must not require auth.
+5. **Signup protections** — in Supabase Auth: enable CAPTCHA (hCaptcha or Turnstile, with the secret
+   in the dashboard and the site key passed by the client), keep **Confirm email** on, set the
+   leaked-password protection (HaveIBeenPwned) check, and set the built-in email rate limits.
+   The app already surfaces "check your email" and blocks unconfirmed sessions.
+6. **Domain** — point the production `SITE_URL`, Supabase Site URL and Paystack callback/webhook at
+   the real domain before launch.
+
 ## Quality checks
 
 ```bash
@@ -424,6 +484,9 @@ Manual smoke path for a release:
 - Email and SMS need a provider key; until one exists, guardian signup runs in review mode and
   `/api/send-email` answers `email_not_configured`, so notifications stay in-app only.
 - Admin modules persist locally per browser rather than in Postgres.
+- The production essentials that need dashboard or paid access — staging Supabase project, PITR
+  backups, a Sentry DSN, CAPTCHA, leaked-password protection and external uptime monitoring — are
+  listed in the production checklist but are not provisioned yet.
 - Physical-phone testing is manual.
 
 ## Repository layout
@@ -431,7 +494,7 @@ Manual smoke path for a release:
 ```
 .env.example             client and server variable names (no values)
 api/                     Vercel functions: Paystack, email, SMS, consent codes, health
-scripts/                 admin grant, Paystack setup, email/SMS checks, Supabase activation
+scripts/                 admin grant, Paystack setup, email/SMS/uptime checks, quiz keys, activation
 supabase/migrations/     schema and RLS policies
 src/pages/               Landing, Auth, ParentAccessRegister, Legal, per-role portals, admin-ops
 src/components/          layout, UI kit, charts, chat, lessons, onboarding, guards, toast, install

@@ -1,6 +1,8 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto'
+import { withMonitoring } from './_monitor.js'
 import { emailConfigured, sendEmail } from './_email.js'
 import { sendSms, smsConfigured } from './_sms.js'
+import { allowRequest } from './_rate-limit.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_RE = /^\+?[0-9][0-9\s()-]{6,19}$/
@@ -129,7 +131,7 @@ function codeSms(learnerName, code) {
   return `NeuroBloom: ${code} is the verification code for ${learner}. Share it to finish sign-up. Expires in 10 minutes.`
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'method_not_allowed', message: 'Use POST for this endpoint.' })
@@ -172,6 +174,18 @@ export default async function handler(req, res) {
       return res.status(429).json({
         error: 'rate_limited',
         message: 'A code was just sent to that contact. Wait a few minutes before requesting another.',
+      })
+    }
+    // The in-memory check dies with a cold start; the database one is shared.
+    const windowSeconds = Math.round(RATE_WINDOW_MS / 1000)
+    const [contactAllowed, ipAllowed] = await Promise.all([
+      allowRequest(`otp:send:${contact.value}`, MAX_SENDS, windowSeconds),
+      allowRequest(`otp:ip:${forwarded || 'unknown'}`, MAX_SENDS * 4, windowSeconds),
+    ])
+    if (!contactAllowed || !ipAllowed) {
+      return res.status(429).json({
+        error: 'rate_limited',
+        message: 'Too many codes were requested. Try again in ten minutes.',
       })
     }
 
@@ -242,3 +256,5 @@ export default async function handler(req, res) {
 
   return res.status(400).json({ error: 'invalid_action', message: 'Unknown OTP action.' })
 }
+
+export default withMonitoring(handler)

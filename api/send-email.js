@@ -1,4 +1,5 @@
 import { emailConfigured, sendEmail } from './_email.js'
+import { withMonitoring } from './_monitor.js'
 
 const ALLOWED_KINDS = new Set(['plan', 'booking', 'support'])
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -167,7 +168,7 @@ async function logEmail({ supabaseUrl, serviceKey, userId, recipient, kind, stat
   }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'method_not_allowed', message: 'Use POST for this endpoint.' })
@@ -282,3 +283,5 @@ export default async function handler(req, res) {
 
   return res.status(200).json({ ok: true, sent: true, message: `Confirmation sent to ${recipient}.` })
 }
+
+export default withMonitoring(handler)

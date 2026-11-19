@@ -12,6 +12,7 @@ import {
   send,
   siteUrl,
 } from './_shared.js'
+import { withMonitoring } from '../_monitor.js'
 
 function parseBody(req) {
   if (!req.body) return null
@@ -25,7 +26,7 @@ function parseBody(req) {
   return req.body
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return fail(res, 405, 'method_not_allowed', 'Use POST for this endpoint.')
@@ -112,3 +113,5 @@ export default async function handler(req, res) {
     coupon: pricing.coupon,
   })
 }
+
+export default withMonitoring(handler)

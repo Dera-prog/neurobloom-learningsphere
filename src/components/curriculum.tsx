@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import type { SubjectCurriculum, Topic } from '../data/curriculum'
 import { useApp } from '../store/store'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { recordQuizAttempt } from '../lib/quiz'
 import { cn } from '../lib/utils'
 import { Badge, Button, Modal, ProgressBar } from './ui'
 import { QuizRunner } from './assignment'
@@ -74,10 +76,26 @@ export function SubjectExplorerModal({
           questions={quiz.questions}
           totalPoints={100}
           accent={subject.color}
-          onFinish={(score) => {
-            dispatch({ type: 'SAVE_QUIZ_SCORE', quizId: quiz.id, score })
+          onFinish={async (score, answers) => {
+            if (!isSupabaseConfigured) {
+              dispatch({ type: 'SAVE_QUIZ_SCORE', quizId: quiz.id, score })
+              toast('Practice saved', {
+                description: `${quiz.title}: ${score}%. Your best score is kept.`,
+                tone: 'success',
+              })
+              return
+            }
+            const saved = await recordQuizAttempt(quiz.id, answers)
+            if (!saved) {
+              toast('Could not save that result', {
+                description: 'Check your connection and try the quiz again.',
+                tone: 'warn',
+              })
+              return
+            }
+            dispatch({ type: 'SAVE_QUIZ_SCORE', quizId: quiz.id, score: saved.best })
             toast('Practice saved', {
-              description: `${quiz.title}: ${score}%. Your best score is kept.`,
+              description: `${quiz.title}: ${saved.score}% · best ${saved.best}%.`,
               tone: 'success',
             })
           }}

@@ -32,6 +32,8 @@ import {
 } from '../data/content'
 import { useAuth } from '../lib/auth'
 import { loadEntitlements } from '../lib/entitlements'
+import { loadQuizScores } from '../lib/quiz'
+import { loadTeacherClasses } from '../lib/classes'
 import { clearOnboardingPending, hasPendingOnboarding } from '../lib/onboarding'
 import {
   CHILD_SLOTS,
@@ -500,13 +502,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     setReady(false)
 
     async function hydrate(id: string) {
-      const [{ data, error }, entitlements] = await Promise.all([
+      const [{ data, error }, entitlements, quizScores, teacherClasses] = await Promise.all([
         supabase!
           .from('user_state')
           .select('state')
           .eq('user_id', id)
           .maybeSingle(),
         loadEntitlements(),
+        loadQuizScores(),
+        loadTeacherClasses(id),
       ])
       if (cancelled) return
 
@@ -523,11 +527,19 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             newAccount: firstRun,
             onboarding: { complete: !firstRun, steps: [] },
           }
+      // Practice scores belong to quiz_attempts. When the table answers, its
+      // rows are the whole truth, so a blob edited in devtools cannot raise a
+      // mark. Keep the blob only when the table is unreachable (demo mode).
+      const withScores = quizScores ? { ...hydrated, quizScores } : hydrated
+      // A teacher's timetable is the classes table; the blob only seeds demo
+      // mode. Non-teachers get an empty list from the same query.
+      const withClasses = teacherClasses ? { ...withScores, teacherClasses } : withScores
+
       // Plans and the Parent Access add-on belong to the subscriptions table.
       // The blob keeps a copy for the mobile app, but it must not decide access.
       const next = entitlements
         ? {
-            ...hydrated,
+            ...withClasses,
             plans: {
               tunde: entitlements.plans.tunde ?? 'general',
               chidi: entitlements.plans.chidi ?? 'general',
@@ -537,7 +549,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
               chidi: entitlements.parentAccess.chidi ?? { active: false, until: null },
             },
           }
-        : hydrated
+        : withClasses
 
       // Do not write here: an eager snapshot of the first-run state can land
       // after the user finishes setup and overwrite it. Leaving syncedRef empty
@@ -574,12 +586,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
 
     if (!userId || !supabase) return
-    const snapshot = JSON.stringify(state)
+    // Quiz scores and assigned classes are derived from their own tables, so a
+    // snapshot in the blob would only make a stale (or tampered) copy survive a
+    // failed read. Keep the blob for preferences, drafts and UI toggles.
+    const persisted = { ...state, quizScores: {}, teacherClasses: [] }
+    const snapshot = JSON.stringify(persisted)
     if (snapshot === syncedRef.current) return
     const client = supabase
     const timer = setTimeout(() => {
       async function save() {
-        let next = state
+        let next = persisted
         if (paymentsConfigured) {
           // Plans are server-owned once payments are live: a tab that was open
           // during checkout must not write its old plans back over the charge.
@@ -589,7 +605,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             .eq('user_id', userId)
             .maybeSingle()
           const serverPlans = (data?.state as Partial<AppState> | null)?.plans
-          if (serverPlans) next = { ...state, plans: { ...state.plans, ...serverPlans } }
+          if (serverPlans) next = { ...persisted, plans: { ...state.plans, ...serverPlans } }
         }
         const { error } = await client
           .from('user_state')

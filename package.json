@@ -12,9 +12,11 @@
     "paystack:setup": "node scripts/paystack-setup.mjs",
     "check:email": "node scripts/check-email.mjs",
     "check:sms": "node scripts/check-sms.mjs",
+    "check:uptime": "node scripts/check-uptime.mjs",
     "grant:admin": "node scripts/grant-admin.mjs"
   },
   "dependencies": {
+    "@sentry/react": "^11.14.0",
     "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",

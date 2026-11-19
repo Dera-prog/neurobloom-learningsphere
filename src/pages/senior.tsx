@@ -43,6 +43,8 @@ import {
 import { useToast } from '../components/toast'
 import { useApp } from '../store/store'
 import { useAuth } from '../lib/auth'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { recordQuizAttempt } from '../lib/quiz'
 import { NewUserDashboard } from '../components/onboarding'
 import {
   examQuestions,
@@ -762,9 +764,20 @@ export function SeniorExams() {
         totalPoints={100}
         timeLimitSec={45 * 60}
         accent="var(--role-accent)"
-        onFinish={(score) => {
-          if (paper) dispatch({ type: 'SAVE_QUIZ_SCORE', quizId: paper.id, score })
-          toast('Practice saved', `You scored ${score}%. Your best score has been updated.`)
+        onFinish={async (score, answers) => {
+          if (!paper) return
+          if (!isSupabaseConfigured) {
+            dispatch({ type: 'SAVE_QUIZ_SCORE', quizId: paper.id, score })
+            toast('Practice saved', `You scored ${score}%. Your best score has been updated.`)
+            return
+          }
+          const saved = await recordQuizAttempt(paper.id, answers)
+          if (!saved) {
+            toast('Could not save that paper', { description: 'Check your connection and try again.', tone: 'warn' })
+            return
+          }
+          dispatch({ type: 'SAVE_QUIZ_SCORE', quizId: paper.id, score: saved.best })
+          toast('Practice saved', `You scored ${saved.score}%. Best so far: ${saved.best}%.`)
         }}
       />
     </RoleLayout>

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { withMonitoring } from '../_monitor.js'
 import { activatePlan, PLANS, send } from './_shared.js'
 
 // Paystack signs the raw request body, so it must not be parsed before checking.
@@ -21,7 +22,7 @@ function signatureMatches(raw, header) {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST')
     return res.status(405).json({ error: 'method_not_allowed' })
@@ -68,3 +69,5 @@ export default async function handler(req, res) {
 
   return send(res, activation.ok ? 200 : 500, { ok: activation.ok, duplicate: Boolean(activation.duplicate) })
 }
+
+export default withMonitoring(handler)

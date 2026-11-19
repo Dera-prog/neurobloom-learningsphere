@@ -1,9 +1,10 @@
 import { emailProvider } from './_email.js'
+import { withMonitoring } from './_monitor.js'
 import { smsProvider } from './_sms.js'
 
 // Integration status for the administrator consoles. Booleans and provider
 // names only — no keys or configuration values leave the server.
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, max-age=0')
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'method_not_allowed' })
@@ -17,3 +18,5 @@ export default async function handler(req, res) {
     smsProvider: smsProvider(),
   })
 }
+
+export default withMonitoring(handler)

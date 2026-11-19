@@ -3,6 +3,7 @@
 // caller's own token is verified and their profile role must be "admin".
 
 import { currentUser, fail, rest, send, supabaseUrl } from './paystack/_shared.js'
+import { withMonitoring } from './_monitor.js'
 
 async function adminUsers() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
@@ -35,7 +36,7 @@ async function evaluationReportCount() {
   }
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, max-age=0')
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET')
@@ -98,3 +99,5 @@ export default async function handler(req, res) {
     progress,
   })
 }
+
+export default withMonitoring(handler)

@@ -21,6 +21,8 @@ import { Confetti, useToast } from './toast'
 import { useAuth } from '../lib/auth'
 import { publishAssignment } from '../lib/homework'
 import { gradeSubmission } from '../lib/grades'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { createTeacherClass } from '../lib/classes'
 
 /* --------------------------------- Quiz ----------------------------------- */
 
@@ -35,7 +37,7 @@ export function QuizRunner({
 }: {
   questions: Question[]
   totalPoints: number
-  onFinish: (score: number) => void
+  onFinish: (score: number, answers: number[]) => void
   onDone: () => void
   timeLimitSec?: number
   accent?: string
@@ -56,7 +58,7 @@ export function QuizRunner({
     if (finished.current) return
     finished.current = true
     setSubmitted(true)
-    onFinish(score)
+    onFinish(score, answers)
   }
 
   useEffect(() => {
@@ -262,7 +264,7 @@ export function QuizModal({
   questions: Question[]
   totalPoints: number
   timeLimitSec?: number
-  onFinish?: (score: number) => void
+  onFinish?: (score: number, answers: number[]) => void
   accent?: string
 }) {
   return (
@@ -273,7 +275,7 @@ export function QuizModal({
           totalPoints={totalPoints}
           timeLimitSec={timeLimitSec}
           accent={accent}
-          onFinish={(score) => onFinish?.(score)}
+          onFinish={(score, answers) => onFinish?.(score, answers)}
           onDone={onClose}
           doneLabel="Close"
         />
@@ -783,11 +785,13 @@ export function CreateAssignmentModal({ open, onClose }: { open: boolean; onClos
 
 export function CreateClassModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { dispatch } = useApp()
+  const { profile } = useAuth()
   const toast = useToast()
   const [name, setName] = useState('')
   const [level, setLevel] = useState('JSS2')
   const [time, setTime] = useState('5:00 PM')
   const [duration, setDuration] = useState('1 hr')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -795,29 +799,56 @@ export function CreateClassModal({ open, onClose }: { open: boolean; onClose: ()
     setLevel('JSS2')
     setTime('5:00 PM')
     setDuration('1 hr')
+    setSaving(false)
   }, [open])
 
-  const create = () => {
+  const create = async () => {
     if (!name.trim()) {
       toast('Add a class name', { tone: 'warn' })
       return
     }
-    dispatch({
-      type: 'CREATE_CLASS',
-      klass: {
-        id: uid('class'),
-        name: name.trim(),
-        level,
-        subject: 'Mathematics',
-        color: '#10b981',
-        soft: '#ecfdf5',
-        students: 0,
-        time,
-        duration,
-        status: 'upcoming',
-      },
+    const klass = {
+      id: uid('class'),
+      name: name.trim(),
+      level,
+      subject: 'Mathematics',
+      color: '#10b981',
+      soft: '#ecfdf5',
+      students: 0,
+      time,
+      duration,
+      status: 'upcoming' as const,
+    }
+
+    if (!isSupabaseConfigured) {
+      dispatch({ type: 'CREATE_CLASS', klass })
+      toast('Class scheduled', { description: `${name.trim()} · ${level} · ${time}`, tone: 'success' })
+      onClose()
+      return
+    }
+
+    if (!profile) {
+      toast('Sign in again to schedule a class', { tone: 'warn' })
+      return
+    }
+
+    setSaving(true)
+    const saved = await createTeacherClass({
+      name: klass.name,
+      level,
+      subject: klass.subject,
+      time,
+      duration,
+      teacherId: profile.id,
+      teacherName: profile.full_name || 'Teacher',
     })
-    toast('Class scheduled', { description: `${name.trim()} · ${level} · ${time}`, tone: 'success' })
+    setSaving(false)
+    if (!saved) {
+      toast('Could not schedule the class', { description: 'Check your connection and try again.', tone: 'warn' })
+      return
+    }
+    dispatch({ type: 'CREATE_CLASS', klass: saved })
+    toast('Class scheduled', { description: `${saved.name} · ${level} · ${time}`, tone: 'success' })
     onClose()
   }
 
@@ -832,8 +863,8 @@ export function CreateClassModal({ open, onClose }: { open: boolean; onClose: ()
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="role" size="sm" onClick={create}>
-            <Plus size={13} /> Schedule class
+          <Button variant="role" size="sm" onClick={create} disabled={saving}>
+            <Plus size={13} /> {saving ? 'Scheduling…' : 'Schedule class'}
           </Button>
         </div>
       }
