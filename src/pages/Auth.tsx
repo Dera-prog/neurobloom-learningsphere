@@ -62,9 +62,6 @@ const fieldClass =
 const opsFieldClass =
   'h-10 w-full rounded-xl border border-border bg-input/60 px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-[#475569]/40 focus:bg-card focus:ring-2 focus:ring-[#475569]/10'
 
-const DEMO_ADMIN_EMAIL = 'admin.demo@example.com'
-const DEMO_ADMIN_PASSWORD = 'NeuroBloomDemo2026!'
-
 const LAST_LEARNER_KEY = 'neurobloom.last-learner'
 
 interface RememberedLearner {
@@ -287,18 +284,6 @@ export function LoginPage() {
     if (!remembered) return
     setEmail((value) => value || remembered.email)
   }, [remembered])
-
-  // Browsers can restore the saved demo administrator login here. That account
-  // belongs on /ops-admin, so drop it from the public form if it turns up.
-  useEffect(() => {
-    const drop = () => {
-      setEmail((value) => (value === DEMO_ADMIN_EMAIL ? '' : value))
-      setPassword((value) => (value === DEMO_ADMIN_PASSWORD ? '' : value))
-    }
-    drop()
-    const timers = [setTimeout(drop, 250), setTimeout(drop, 900)]
-    return () => timers.forEach(clearTimeout)
-  }, [])
 
   useEffect(() => {
     if (!configured || loading || !signedIn || !session || !profile) return
@@ -1200,8 +1185,8 @@ export function OpsAdminLoginPage() {
   const { configured, loading, session, profile, signIn } = useAuth()
   const navigate = useNavigate()
   const toast = useToast()
-  const [email, setEmail] = useState(DEMO_ADMIN_EMAIL)
-  const [password, setPassword] = useState(DEMO_ADMIN_PASSWORD)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1250,18 +1235,8 @@ export function OpsAdminLoginPage() {
               <ShieldCheck size={12} /> Restricted access
             </span>
             <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-foreground">Welcome back</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <p className="text-sm font-bold text-foreground">Zainab Yusuf</p>
-              <span className="rounded-full bg-[#475569]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#334155]">
-                Admin manager
-              </span>
-            </div>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">admin.demo@example.com · Lagos support desk · WAT</p>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               Sign in to the Admin Manager console for approvals, moderation, payouts and platform health.
-            </p>
-            <p className="mt-3 rounded-xl border border-[#475569]/20 bg-[#475569]/5 px-3 py-2 text-[11px] font-medium text-[#334155]">
-              Review account: the demo administrator email and password are already filled in.
             </p>
 
             <form onSubmit={submit} className="mt-5 space-y-3.5" noValidate>

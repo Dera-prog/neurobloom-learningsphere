@@ -313,7 +313,7 @@ export function AdminProfile() {
   const highPriority = tasks.filter((t) => t.priority === 'high' && t.status !== 'resolved').length
 
   const adminName = live ? profile?.full_name || 'Administrator' : 'Zainab Yusuf'
-  const adminEmail = live ? profile?.email || 'No email on file' : 'admin.demo@example.com'
+  const adminEmail = profile?.email || 'No email on file'
   const initials =
     adminName
       .split(/\s+/)
@@ -329,7 +329,7 @@ export function AdminProfile() {
         { label: 'Access', value: 'Database-governed console' },
       ]
     : [
-        { label: 'Work email', value: 'admin.demo@example.com' },
+        { label: 'Work email', value: 'No email on file' },
         { label: 'Phone', value: '+234 803 555 0142' },
         { label: 'Office', value: 'Lagos support desk · West Africa Time' },
         { label: 'Emergency cover', value: 'Ade Martins (deputy admin)' },
