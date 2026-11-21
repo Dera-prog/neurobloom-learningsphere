@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -74,6 +74,16 @@ import {
   seedAdminTasks,
   seedProducts,
 } from '../data/admin-ops'
+import {
+  adminDemoMode,
+  cancelSubscriptionRecord,
+  loadAdminDocuments,
+  saveAdminDocument,
+  setAccountStatus,
+  setAccountVerified,
+  useAdminLive,
+  useAdminSnapshot,
+} from '../lib/admin-console'
 
 /* ------------------------------ Local state ------------------------------- */
 
@@ -112,15 +122,89 @@ function loadAdminData(): AdminData {
   }
 }
 
+function emptyAdminData(): AdminData {
+  return {
+    users: [],
+    reviews: [],
+    payouts: [],
+    ledger: [],
+    subscriptions: [],
+    categories: [...platformCategories],
+  }
+}
+
+// Accounts, payments and subscriptions are real rows; the moderation queue,
+// payouts and categories are console records. Demo builds keep the browser copy.
 function useAdminData() {
-  const [data, setData] = useState<AdminData>(loadAdminData)
+  const live = useAdminLive()
+  const snapshot = useAdminSnapshot(live)
+  const [docsReady, setDocsReady] = useState(false)
+  const dirty = useRef(false)
+  const [data, setDataState] = useState<AdminData>(() =>
+    adminDemoMode('admin') ? loadAdminData() : emptyAdminData(),
+  )
+  // Only a real console edit should write the document; hydration must not.
+  const setData = useCallback((next: AdminData | ((prev: AdminData) => AdminData)) => {
+    dirty.current = true
+    setDataState(next)
+  }, [])
+
   useEffect(() => {
+    if (live) return
+    if (!adminDemoMode('admin')) return
     try {
       localStorage.setItem(ADMIN_KEY, JSON.stringify(data))
     } catch {
       // Private browsing can block storage; the console still works in memory.
     }
-  }, [data])
+  }, [live, data])
+
+  useEffect(() => {
+    if (!live) return
+    let active = true
+    void loadAdminDocuments().then((docs) => {
+      if (!active) return
+      const stored = (docs?.console?.admin ?? {}) as Partial<{
+        reviews: AdminReview[]
+        payouts: AdminPayout[]
+        categories: string[]
+      }>
+      setDataState((prev) => ({
+        ...prev,
+        reviews: stored.reviews ?? [],
+        payouts: stored.payouts ?? [],
+        categories: stored.categories?.length ? stored.categories : [...platformCategories],
+      }))
+      setDocsReady(true)
+    })
+    return () => {
+      active = false
+    }
+  }, [live])
+
+  useEffect(() => {
+    if (!live || !snapshot) return
+    setDataState((prev) => ({
+      ...prev,
+      users: snapshot.users,
+      ledger: snapshot.ledger,
+      subscriptions: snapshot.subscriptions,
+    }))
+  }, [live, snapshot])
+
+  useEffect(() => {
+    if (!live || !docsReady || !dirty.current) return
+    const timer = setTimeout(() => {
+      dirty.current = false
+      void saveAdminDocument('console', 'admin', {
+        reviews: data.reviews,
+        payouts: data.payouts,
+        categories: data.categories,
+      })
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [live, docsReady, data.reviews, data.payouts, data.categories])
+
   return [data, setData] as const
 }
 
@@ -457,6 +541,7 @@ type UserTab = 'all' | 'student' | 'teacher' | 'specialist' | 'parent' | 'pendin
 
 export function AdminUsers() {
   const [data, setData] = useAdminData()
+  const live = useAdminLive()
   const toast = useToast()
   const [tab, setTab] = useState<UserTab>('all')
   const [query, setQuery] = useState('')
@@ -480,6 +565,10 @@ export function AdminUsers() {
 
   function patch(id: string, change: Partial<AdminUser>) {
     setData((prev) => ({ ...prev, users: prev.users.map((u) => (u.id === id ? { ...u, ...change } : u)) }))
+    if (!live) return
+    // Suspension and approval are real account columns, not console records.
+    if (change.status) void setAccountStatus(id, change.status === 'suspended' ? 'suspended' : 'active')
+    if (change.verified !== undefined) void setAccountVerified(id, change.verified)
   }
 
   function approve(user: AdminUser) {
@@ -514,7 +603,7 @@ export function AdminUsers() {
       badge={<Badge tone="role">{counts.pending} pending</Badge>}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Total accounts" value={data.users.length} icon={Users} sub="In this sample" />
+        <StatCard label="Total accounts" value={data.users.length} icon={Users} sub="Platform accounts" />
         <StatCard label="Teachers" value={counts.teacher} icon={GraduationCap} sub="Across all subjects" />
         <StatCard label="Specialists" value={counts.specialist} icon={HeartHandshake} sub="ASD & ADHD support" />
         <StatCard label="Awaiting review" value={counts.pending} icon={Clock} sub="Approve or decline" />
@@ -829,15 +918,26 @@ type FinanceTab = 'subscriptions' | 'payments' | 'payouts'
 
 export function AdminFinance() {
   const [data, setData] = useAdminData()
+  const live = useAdminLive()
   const toast = useToast()
   const [tab, setTab] = useState<FinanceTab>('subscriptions')
   const [refund, setRefund] = useState<AdminLedgerRow | null>(null)
 
   const mrr = data.subscriptions.filter((s) => s.status === 'active').reduce((sum, s) => sum + s.amount, 0)
+  const collected = data.ledger.filter((l) => l.status === 'success').reduce((sum, l) => sum + l.amount, 0)
+  const refunded = data.ledger.filter((l) => l.status === 'refunded')
+  const refundedTotal = refunded.reduce((sum, l) => sum + l.amount, 0)
   const due = data.payouts.filter((p) => p.status === 'due')
   const dueTotal = due.reduce((sum, p) => sum + p.net, 0)
 
-  function cancelSubscription(row: AdminSubscription) {
+  async function cancelSubscription(row: AdminSubscription) {
+    if (live) {
+      const result = await cancelSubscriptionRecord(row.id)
+      if (!result.ok) {
+        toast('Subscription not cancelled', { description: result.error, tone: 'warn' })
+        return
+      }
+    }
     setData((prev) => ({
       ...prev,
       subscriptions: prev.subscriptions.map((s) => (s.id === row.id ? { ...s, status: 'cancelled', next: '—' } : s)),
@@ -848,6 +948,14 @@ export function AdminFinance() {
   function issueRefund() {
     if (!refund) return
     const row = refund
+    if (live) {
+      setRefund(null)
+      toast('Refund from Paystack', {
+        description: `Refund ${naira(row.amount)} for ${row.parent} in the Paystack dashboard. The ledger keeps the charge until Paystack records the refund.`,
+        tone: 'info',
+      })
+      return
+    }
     setData((prev) => ({
       ...prev,
       ledger: prev.ledger.map((l) => (l.id === row.id ? { ...l, status: 'refunded' } : l)),
@@ -873,9 +981,9 @@ export function AdminFinance() {
       badge={<Badge tone="success">Paystack connected</Badge>}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Collected this month" value={naira(platformStats.collected, true)} icon={Receipt} trend={{ value: '8.9%' }} sub="vs October" />
-        <StatCard label="Recurring revenue" value={naira(platformStats.mrr, true)} icon={RefreshCw} sub="Active plans" />
-        <StatCard label="Refunds" value={naira(platformStats.refunds, true)} icon={Wallet} sub="2 this month" />
+        <StatCard label="Collected" value={naira(collected, true)} icon={Receipt} sub="Successful charges" />
+        <StatCard label="Recurring revenue" value={naira(mrr, true)} icon={RefreshCw} sub="Active plans" />
+        <StatCard label="Refunds" value={naira(refundedTotal, true)} icon={Wallet} sub={`${refunded.length} refunded`} />
         <StatCard label="Payouts due" value={naira(dueTotal, true)} icon={Users} sub={`${due.length} teachers`} />
       </div>
 

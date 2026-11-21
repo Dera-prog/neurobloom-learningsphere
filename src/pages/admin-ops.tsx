@@ -52,6 +52,15 @@ import {
   Toggle,
 } from '../components/ui'
 import { useToast } from '../components/toast'
+import type { AdminLedgerRow } from '../data/admin'
+import { useAuth } from '../lib/auth'
+import {
+  saveAdminDocument,
+  useAdminActivity,
+  useAdminDoc,
+  useAdminLive,
+  useAdminSnapshot,
+} from '../lib/admin-console'
 import { readComplaints } from '../lib/complaints'
 import {
   loadTicketQueue,
@@ -69,7 +78,6 @@ import {
 import { naira } from '../lib/utils'
 import {
   adminActivity,
-  productCategoryShare,
   productSalesStats,
   recentReports,
   reportCatalogue,
@@ -82,6 +90,7 @@ import {
   seedPayroll,
   seedProducts,
   seedSupportTickets,
+  type AdminFeedback as FeedbackItem,
   type AdminInvoice,
   type AdminOrder,
   type AdminPayrollRow,
@@ -156,6 +165,101 @@ const productKindLabel: Record<ProductKind, string> = {
   'exam-pack': 'Exam pack',
 }
 
+const PLAN_LABEL: Record<string, string> = {
+  general: 'General',
+  premium: 'Premium',
+  premium_plus: 'Premium Plus',
+  special: 'Special Needs',
+}
+
+const taskPriority: Record<SupportTicketRecord['priority'], AdminTask['priority']> = {
+  urgent: 'high',
+  high: 'high',
+  normal: 'medium',
+}
+
+function taskAreaFor(category: string, role: string): TaskArea {
+  switch (category) {
+    case 'Payments & earnings':
+      return 'subscription-approval'
+    case 'Special-needs support':
+      return 'special-needs'
+    case 'Messages & delivery':
+      return 'email-delivery'
+    case 'Account & access':
+      return 'child-access'
+    default:
+      return role === 'teacher' ? 'teacher-dashboard' : 'child-access'
+  }
+}
+
+function taskRequesterRole(role: string): AdminTask['requesterRole'] {
+  if (role === 'teacher') return 'Teacher'
+  if (role === 'parent' || role === 'admin') return 'Parent'
+  return 'Student'
+}
+
+function taskDue(createdAt: string, priority: SupportTicketRecord['priority']) {
+  const created = new Date(createdAt).getTime()
+  if (Number.isNaN(created)) return '—'
+  const hours = priority === 'normal' ? 24 : 4
+  const due = new Date(created + hours * 3_600_000)
+  return `Due ${due.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+}
+
+function ticketToTask(ticket: SupportTicketRecord): AdminTask {
+  return {
+    id: ticket.id,
+    area: taskAreaFor(ticket.category, ticket.requesterRole),
+    title: ticket.subject,
+    requester: ticket.requesterName,
+    requesterRole: taskRequesterRole(ticket.requesterRole),
+    detail: ticket.body,
+    opened: new Date(ticket.createdAt).toLocaleString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    due: taskDue(ticket.createdAt, ticket.priority),
+    priority: taskPriority[ticket.priority],
+    status: ticket.status === 'resolved' ? 'resolved' : ticket.status === 'waiting' ? 'in_progress' : 'open',
+  }
+}
+
+function parentInvoicesFromLedger(ledger: AdminLedgerRow[], emailByName: Map<string, string>): AdminInvoice[] {
+  return ledger
+    .filter((row) => row.status === 'success')
+    .map((row) => ({
+      id: `INV-${row.id.replace(/[^A-Za-z0-9]/g, '').slice(-8).toUpperCase()}`,
+      kind: 'parent' as const,
+      party: row.parent,
+      email: emailByName.get(row.parent) ?? '',
+      description: `${PLAN_LABEL[row.plan] ?? row.plan} plan · ${row.child}`,
+      period: row.date,
+      amount: row.amount,
+      issued: row.date,
+      due: row.date,
+      status: 'paid' as const,
+    }))
+}
+
+function NotConnected({ title, description }: { title: string; description: string }) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+          <BarChart3 size={16} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-foreground">{title}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{description}</p>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 function Stars({ rating, size = 12 }: { rating: number; size?: number }) {
   return (
     <span className="inline-flex items-center gap-0.5" aria-label={`${rating} out of 5 stars`}>
@@ -176,10 +280,30 @@ type TaskTab = 'open' | 'in_progress' | 'resolved' | 'all'
 
 export function AdminProfile() {
   const toast = useToast()
+  const { profile } = useAuth()
+  const live = useAdminLive()
+  const activity = useAdminActivity(live)
   const [overrides, setOverrides] = useStored<Record<string, { status: TaskStatus }>>(TASKS_KEY, () => ({}))
   const [tab, setTab] = useState<TaskTab>('open')
+  const [queue, setQueue] = useState<SupportTicketRecord[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
 
-  const tasks = seedAdminTasks.map((task) => ({ ...task, status: overrides[task.id]?.status ?? task.status }))
+  const refresh = useCallback(async () => {
+    const rows = await loadTicketQueue()
+    if (rows) setQueue(rows)
+  }, [])
+
+  useEffect(() => {
+    if (live) void refresh()
+  }, [live, refresh])
+
+  const tasks = useMemo<AdminTask[]>(
+    () =>
+      live
+        ? (queue ?? []).map(ticketToTask)
+        : seedAdminTasks.map((task) => ({ ...task, status: overrides[task.id]?.status ?? task.status })),
+    [live, queue, overrides],
+  )
   const counts = {
     open: tasks.filter((t) => t.status === 'open').length,
     in_progress: tasks.filter((t) => t.status === 'in_progress').length,
@@ -188,8 +312,60 @@ export function AdminProfile() {
   const visible = tab === 'all' ? tasks : tasks.filter((task) => task.status === tab)
   const highPriority = tasks.filter((t) => t.priority === 'high' && t.status !== 'resolved').length
 
-  function setTaskStatus(task: AdminTask, status: TaskStatus) {
-    setOverrides((prev) => ({ ...prev, [task.id]: { status } }))
+  const adminName = live ? profile?.full_name || 'Administrator' : 'Zainab Yusuf'
+  const adminEmail = live ? profile?.email || 'No email on file' : 'admin.demo@example.com'
+  const initials =
+    adminName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || 'AD'
+
+  const contactRows = live
+    ? [
+        { label: 'Work email', value: adminEmail },
+        { label: 'Workspace', value: 'Platform administration' },
+        { label: 'Access', value: 'Database-governed console' },
+      ]
+    : [
+        { label: 'Work email', value: 'admin.demo@example.com' },
+        { label: 'Phone', value: '+234 803 555 0142' },
+        { label: 'Office', value: 'Lagos support desk · West Africa Time' },
+        { label: 'Emergency cover', value: 'Ade Martins (deputy admin)' },
+      ]
+
+  const securityRows: { label: string; value: string; tone: Tone }[] = live
+    ? [
+        { label: 'Role', value: 'Administrator · full access', tone: 'role' },
+        { label: 'Data access', value: 'Row-level policies', tone: 'sky' },
+        { label: 'Console records', value: 'Admin-only table', tone: 'neutral' },
+      ]
+    : [
+        { label: 'Two-factor authentication', value: 'Enabled · authenticator app', tone: 'success' },
+        { label: 'Active sessions', value: '3 devices', tone: 'neutral' },
+        { label: 'Role', value: 'Super Admin · full access', tone: 'role' },
+        { label: 'Data export', value: 'Permitted · logged', tone: 'sky' },
+      ]
+
+  const activityRows = live
+    ? (activity ?? []).map((row) => ({ id: row.id, when: row.when, actor: row.actor, action: row.action }))
+    : adminActivity.map((row) => ({ id: row.id, when: row.time, actor: row.actor, action: row.action }))
+
+  async function setTaskStatus(task: AdminTask, status: TaskStatus) {
+    if (live) {
+      setBusy(task.id)
+      const next: SupportStatus = status === 'resolved' ? 'resolved' : status === 'in_progress' ? 'waiting' : 'open'
+      const result = await replyToTicket(task.id, { status: next })
+      setBusy(null)
+      if (!result.ok) {
+        toast('Ticket not updated', { description: result.error, tone: 'warn' })
+        return
+      }
+      await refresh()
+    } else {
+      setOverrides((prev) => ({ ...prev, [task.id]: { status } }))
+    }
     if (status === 'resolved') {
       toast('Complaint resolved', { description: `${task.requester} has been notified about “${task.title}”.`, tone: 'success' })
     } else if (status === 'in_progress') {
@@ -209,16 +385,18 @@ export function AdminProfile() {
         <div className="bg-[linear-gradient(120deg,#1e293b,#475569)] p-5 text-white sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-2xl font-extrabold text-white ring-1 ring-white/25">
-              ZY
+              {initials}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-extrabold tracking-tight">Zainab Yusuf</h2>
+                <h2 className="text-xl font-extrabold tracking-tight">{adminName}</h2>
                 <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/85">
                   Admin manager
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-white/70">admin.demo@example.com · Lagos support desk · WAT</p>
+              <p className="mt-0.5 text-xs text-white/70">
+                {adminEmail} · {live ? 'Platform administration' : 'Lagos support desk · WAT'}
+              </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {['Approvals', 'Finance', 'Safeguarding', 'Daily complaints'].map((chip) => (
                   <span key={chip} className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-semibold text-white/75">
@@ -250,8 +428,10 @@ export function AdminProfile() {
           </div>
           <div className="p-4">
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Last sign-in</p>
-            <p className="mt-1 text-sm font-bold text-foreground">Today, 07:58 AM</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Chrome on Windows · Lagos</p>
+            <p className="mt-1 text-sm font-bold text-foreground">{live ? 'Current session' : 'Today, 07:58 AM'}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {live ? 'Signed in as administrator' : 'Chrome on Windows · Lagos'}
+            </p>
           </div>
         </div>
       </Card>
@@ -308,16 +488,31 @@ export function AdminProfile() {
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                       {task.status === 'open' ? (
-                        <Button size="sm" variant="outline" onClick={() => setTaskStatus(task, 'in_progress')}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy === task.id}
+                          onClick={() => void setTaskStatus(task, 'in_progress')}
+                        >
                           <Play size={12} /> Start
                         </Button>
                       ) : null}
                       {task.status !== 'resolved' ? (
-                        <Button size="sm" variant="role" onClick={() => setTaskStatus(task, 'resolved')}>
+                        <Button
+                          size="sm"
+                          variant="role"
+                          disabled={busy === task.id}
+                          onClick={() => void setTaskStatus(task, 'resolved')}
+                        >
                           <CheckCircle2 size={12} /> Resolve
                         </Button>
                       ) : (
-                        <Button size="sm" variant="ghost" onClick={() => setTaskStatus(task, 'open')}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy === task.id}
+                          onClick={() => void setTaskStatus(task, 'open')}
+                        >
                           <RotateCcw size={12} /> Reopen
                         </Button>
                       )}
@@ -330,11 +525,21 @@ export function AdminProfile() {
         ) : (
           <EmptyState
             emoji="🌿"
-            title={tab === 'resolved' ? 'Nothing resolved yet' : 'Queue is clear'}
+            title={
+              live && !queue
+                ? 'Loading complaints'
+                : live && !tasks.length
+                  ? 'No complaints yet'
+                  : tab === 'resolved'
+                    ? 'Nothing resolved yet'
+                    : 'Queue is clear'
+            }
             description={
-              tab === 'resolved'
-                ? 'Complaints you resolve will be archived here with the resolution time.'
-                : 'Every complaint in this view has been handled.'
+              live && !tasks.length
+                ? 'Complaints filed from any dashboard land here as support tickets.'
+                : tab === 'resolved'
+                  ? 'Complaints you resolve will be archived here with the resolution time.'
+                  : 'Every complaint in this view has been handled.'
             }
           />
         )}
@@ -343,12 +548,7 @@ export function AdminProfile() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <SectionCard title="Contact details" subtitle="How the team reaches you" icon={Mail}>
           <dl className="space-y-3 text-xs">
-            {[
-              { label: 'Work email', value: 'admin.demo@example.com' },
-              { label: 'Phone', value: '+234 803 555 0142' },
-              { label: 'Office', value: 'Lagos support desk · West Africa Time' },
-              { label: 'Emergency cover', value: 'Ade Martins (deputy admin)' },
-            ].map((row) => (
+            {contactRows.map((row) => (
               <div key={row.label} className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2.5 last:border-0 last:pb-0">
                 <dt className="font-semibold text-muted-foreground">{row.label}</dt>
                 <dd className="font-semibold text-foreground">{row.value}</dd>
@@ -359,12 +559,7 @@ export function AdminProfile() {
 
         <SectionCard title="Access & security" subtitle="Your administrator safeguards" icon={ShieldCheck}>
           <div className="space-y-3 text-xs">
-            {[
-              { label: 'Two-factor authentication', value: 'Enabled · authenticator app', tone: 'success' as Tone },
-              { label: 'Active sessions', value: '3 devices', tone: 'neutral' as Tone },
-              { label: 'Role', value: 'Super Admin · full access', tone: 'role' as Tone },
-              { label: 'Data export', value: 'Permitted · logged', tone: 'sky' as Tone },
-            ].map((row) => (
+            {securityRows.map((row) => (
               <div key={row.label} className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2.5 last:border-0 last:pb-0">
                 <span className="font-semibold text-muted-foreground">{row.label}</span>
                 <Badge tone={row.tone}>{row.value}</Badge>
@@ -377,27 +572,33 @@ export function AdminProfile() {
         </SectionCard>
       </div>
 
-      <SectionCard title="Recent administrator activity" subtitle="Actions recorded against your account" icon={FileText}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left">
-            <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-2 py-2 font-bold">When</th>
-                <th className="px-2 py-2 font-bold">Admin</th>
-                <th className="px-2 py-2 font-bold">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/70 text-xs">
-              {adminActivity.map((row) => (
-                <tr key={row.id}>
-                  <td className="whitespace-nowrap px-2 py-3 text-muted-foreground">{row.time}</td>
-                  <td className="whitespace-nowrap px-2 py-3 font-semibold text-foreground">{row.actor}</td>
-                  <td className="px-2 py-3 text-muted-foreground">{row.action}</td>
+      <SectionCard title="Recent administrator activity" subtitle="Console records saved from this admin team" icon={FileText}>
+        {activityRows.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left">
+              <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-2 py-2 font-bold">When</th>
+                  <th className="px-2 py-2 font-bold">Admin</th>
+                  <th className="px-2 py-2 font-bold">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border/70 text-xs">
+                {activityRows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="whitespace-nowrap px-2 py-3 text-muted-foreground">{row.when}</td>
+                    <td className="whitespace-nowrap px-2 py-3 font-semibold text-foreground">{row.actor}</td>
+                    <td className="px-2 py-3 text-muted-foreground">{row.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="px-2 py-4 text-xs text-muted-foreground">
+            {live ? 'No console changes recorded yet.' : 'No activity recorded.'}
+          </p>
+        )}
       </SectionCard>
     </ConsolePage>
   )
@@ -406,7 +607,24 @@ export function AdminProfile() {
 /* ---------------------------------- Sales --------------------------------- */
 
 export function AdminSales() {
+  const live = useAdminLive()
   const topProducts = useMemo(() => [...seedProducts].sort((a, b) => b.sold - a.sold), [])
+
+  if (live) {
+    return (
+      <ConsolePage
+        title="Sales"
+        subtitle="Product sales, purchases, settlements and profit"
+        badge={<Badge tone="neutral">Not connected</Badge>}
+      >
+        <NotConnected
+          title="Product sales aren't recorded yet"
+          description="Product orders are not stored in the database, so there are no real sales or profit figures to show here. Subscription revenue from parents is on the Finance page."
+        />
+      </ConsolePage>
+    )
+  }
+
   const totalUnits = topProducts.reduce((sum, p) => sum + p.sold, 0)
   const mostSold = topProducts[0]
   const margin = Math.round((productSalesStats.profit / productSalesStats.totalSales) * 100)
@@ -528,6 +746,7 @@ type OrderTab = 'all' | OrderStatus
 
 export function AdminOrders() {
   const toast = useToast()
+  const live = useAdminLive()
   const [tab, setTab] = useState<OrderTab>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<AdminOrder | null>(null)
@@ -552,11 +771,26 @@ export function AdminOrders() {
     return inTab && inQuery
   })
 
+  if (live) {
+    return (
+      <ConsolePage
+        title="Orders"
+        subtitle="Every product order, payment state and fulfilment record"
+        badge={<Badge tone="neutral">Not connected</Badge>}
+      >
+        <NotConnected
+          title="Product orders aren't recorded yet"
+          description="Product purchases are not stored in the database, so there are no real order rows to review. Parent subscription charges are on the Finance page."
+        />
+      </ConsolePage>
+    )
+  }
+
   return (
     <ConsolePage
       title="Orders"
       subtitle="Every product order, payment state and fulfilment record"
-      badge={<Badge tone="success">Paystack live</Badge>}
+      badge={<Badge tone="success">Demo data</Badge>}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Orders this month" value={seedOrders.length} icon={ShoppingCart} sub="All product orders" />
@@ -682,7 +916,15 @@ export function AdminOrders() {
 
 export function AdminProducts() {
   const toast = useToast()
-  const [products, setProducts] = useStored<AdminProduct[]>(PRODUCTS_KEY, () => seedProducts.map((p) => ({ ...p })))
+  const live = useAdminLive()
+  const [products, setProducts] = useAdminDoc<AdminProduct[]>({
+    collection: 'products',
+    id: 'catalogue',
+    seed: () => seedProducts.map((p) => ({ ...p })),
+    empty: () => [],
+    storageKey: PRODUCTS_KEY,
+    live,
+  })
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState({ name: '', kind: 'resource' as ProductKind, category: 'Mathematics', price: '' })
@@ -691,10 +933,24 @@ export function AdminProducts() {
   const visible = products.filter((product) =>
     !needle ? true : [product.name, product.category, productKindLabel[product.kind]].some((value) => value.toLowerCase().includes(needle)),
   )
-  const live = products.filter((p) => p.status === 'live')
+  const published = products.filter((p) => p.status === 'live')
   const units = products.reduce((sum, p) => sum + p.sold, 0)
   const revenue = products.reduce((sum, p) => sum + p.revenue, 0)
-  const avgRating = products.reduce((sum, p) => sum + p.rating, 0) / products.length
+  const avgRating = products.length ? products.reduce((sum, p) => sum + p.rating, 0) / products.length : 0
+
+  const categoryShare = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const product of products) {
+      totals.set(product.category, (totals.get(product.category) ?? 0) + product.revenue)
+    }
+    const total = [...totals.values()].reduce((sum, value) => sum + value, 0)
+    if (!total) return []
+    const palette = ['#475569', '#64748b', '#94a3b8', '#cbd5e1', '#e2e8f0']
+    return [...totals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value], index) => ({ name, value: Math.round((value / total) * 100), color: palette[index] }))
+  }, [products])
 
   function toggleStatus(product: AdminProduct) {
     setProducts((prev) =>
@@ -737,7 +993,7 @@ export function AdminProducts() {
       badge={<Badge tone="role">Catalogue</Badge>}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Live products" value={`${live.length}/${products.length}`} icon={Package} sub="Visible in the store" />
+        <StatCard label="Live products" value={`${published.length}/${products.length}`} icon={Package} sub="Visible in the store" />
         <StatCard label="Units sold" value={units.toLocaleString()} icon={ShoppingCart} sub="All products" />
         <StatCard label="Product revenue" value={naira(revenue, true)} icon={Receipt} sub="Before refunds" />
         <StatCard label="Average rating" value={avgRating.toFixed(1)} icon={Star} sub="Across the catalogue" />
@@ -802,28 +1058,40 @@ export function AdminProducts() {
         </div>
         {!visible.length ? (
           <div className="p-4">
-            <EmptyState emoji="📦" title="No products match" description="Try a different search term." />
+            <EmptyState
+              emoji="📦"
+              title={products.length ? 'No products match' : 'No products yet'}
+              description={
+                products.length ? 'Try a different search term.' : 'Create the first product; drafts stay private until published.'
+              }
+            />
           </div>
         ) : null}
       </Card>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <SectionCard title="Product statistics" subtitle="Share of product revenue by type" icon={BarChart3}>
-          <Donut data={productCategoryShare} centerValue={naira(productSalesStats.totalSales, true)} centerLabel="product sales" height={190} />
-          <div className="mt-3 space-y-1.5">
-            {productCategoryShare.map((row) => (
-              <div key={row.name} className="flex items-center justify-between text-[11px]">
-                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                  <span className="h-2 w-2 rounded-full" style={{ background: row.color }} />
-                  {row.name}
-                </span>
-                <span className="font-bold text-foreground">{row.value}%</span>
+        <SectionCard title="Product statistics" subtitle="Share of product revenue by category" icon={BarChart3}>
+          {categoryShare.length ? (
+            <>
+              <Donut data={categoryShare} centerValue={naira(revenue, true)} centerLabel="product revenue" height={190} />
+              <div className="mt-3 space-y-1.5">
+                {categoryShare.map((row) => (
+                  <div key={row.name} className="flex items-center justify-between text-[11px]">
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full" style={{ background: row.color }} />
+                      {row.name}
+                    </span>
+                    <span className="font-bold text-foreground">{row.value}%</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <EmptyState emoji="📊" title="No product revenue yet" description="Revenue appears once products have sales." />
+          )}
         </SectionCard>
 
-        <SectionCard title="Best sellers" subtitle="Units sold out of 1,284 purchases" icon={TrendingUp}>
+        <SectionCard title="Best sellers" subtitle="Units sold across the catalogue" icon={TrendingUp}>
           <div className="space-y-3">
             {[...products]
               .sort((a, b) => b.sold - a.sold)
@@ -834,7 +1102,7 @@ export function AdminProducts() {
                     <span className="truncate font-semibold text-foreground">{product.name}</span>
                     <span className="shrink-0 text-muted-foreground">{product.sold} units</span>
                   </div>
-                  <ProgressBar value={(product.sold / units) * 100} className="mt-1.5" label={`${product.name} units`} />
+                  <ProgressBar value={units ? (product.sold / units) * 100 : 0} className="mt-1.5" label={`${product.name} units`} />
                 </div>
               ))}
           </div>
@@ -909,17 +1177,33 @@ export function AdminProducts() {
 
 export function AdminInvoices() {
   const toast = useToast()
-  const [overrides, setOverrides] = useStored<Record<string, InvoiceStatus>>(INVOICES_KEY, () => ({}))
+  const live = useAdminLive()
+  const snapshot = useAdminSnapshot(live)
+  const [stored, setStored] = useAdminDoc<AdminInvoice[]>({
+    collection: 'invoices',
+    id: 'teacher',
+    seed: () => seedInvoices.map((invoice) => ({ ...invoice })),
+    empty: () => [],
+    storageKey: INVOICES_KEY,
+    live,
+  })
   const [tab, setTab] = useState<AdminInvoice['kind']>('parent')
 
-  const invoices = seedInvoices.map((invoice) => ({ ...invoice, status: overrides[invoice.id] ?? invoice.status }))
+  // Parent invoices are the successful charges in the payments table; teacher
+  // commission invoices are console records an administrator can settle.
+  const invoices = useMemo(() => {
+    if (!live) return stored
+    const emailByName = new Map(snapshot?.users.map((user) => [user.name, user.email]) ?? [])
+    return [...parentInvoicesFromLedger(snapshot?.ledger ?? [], emailByName), ...stored]
+  }, [live, stored, snapshot])
+
   const outstanding = invoices.filter((i) => i.status === 'pending' || i.status === 'overdue').reduce((sum, i) => sum + i.amount, 0)
   const paid = invoices.filter((i) => i.status === 'paid').reduce((sum, i) => sum + i.amount, 0)
   const overdue = invoices.filter((i) => i.status === 'overdue').length
   const visible = invoices.filter((invoice) => invoice.kind === tab)
 
   function markPaid(invoice: AdminInvoice) {
-    setOverrides((prev) => ({ ...prev, [invoice.id]: 'paid' }))
+    setStored((prev) => prev.map((row) => (row.id === invoice.id ? { ...row, status: 'paid' as InvoiceStatus } : row)))
     toast('Invoice marked paid', { description: `${invoice.id} · ${naira(invoice.amount)} recorded for ${invoice.party}.`, tone: 'success' })
   }
 
@@ -933,7 +1217,7 @@ export function AdminInvoices() {
         <StatCard label="Outstanding" value={naira(outstanding, true)} icon={FileText} sub={`${invoices.filter((i) => i.status === 'pending').length} pending invoices`} />
         <StatCard label="Paid" value={naira(paid, true)} icon={CheckCircle2} sub={`${invoices.filter((i) => i.status === 'paid').length} settled`} />
         <StatCard label="Overdue" value={overdue} icon={AlertTriangle} sub="Needs a reminder" />
-        <StatCard label="Invoices issued" value={invoices.length} icon={Receipt} sub="October–November" />
+        <StatCard label="Invoices issued" value={invoices.length} icon={Receipt} sub="All invoices" />
       </div>
 
       <Tabs<AdminInvoice['kind']>
@@ -1026,31 +1310,36 @@ export function AdminInvoices() {
 
 export function AdminPayroll() {
   const toast = useToast()
-  const [overrides, setOverrides] = useStored<Record<string, AdminPayrollRow['status']>>(PAYROLL_KEY, () => ({}))
-  const [period, setPeriod] = useState('October 2026')
+  const live = useAdminLive()
+  const [allRows, setAllRows] = useAdminDoc<AdminPayrollRow[]>({
+    collection: 'payroll',
+    id: 'staff',
+    seed: () => seedPayroll.map((row) => ({ ...row })),
+    empty: () => [],
+    storageKey: PAYROLL_KEY,
+    live,
+  })
+  const [period, setPeriod] = useState('All periods')
 
-  const rows = seedPayroll
-    .map((row) => ({ ...row, status: overrides[row.id] ?? row.status }))
-    .filter((row) => period === 'All periods' || row.period === period)
+  const periods = useMemo(() => [...new Set(allRows.map((row) => row.period))], [allRows])
+  const rows = allRows.filter((row) => period === 'All periods' || row.period === period)
   const due = rows.filter((row) => row.status === 'due')
   const dueTotal = due.reduce((sum, row) => sum + row.net, 0)
   const paidTotal = rows.filter((row) => row.status === 'paid').reduce((sum, row) => sum + row.net, 0)
   const feeTotal = rows.reduce((sum, row) => sum + row.fee, 0)
 
+  function markPaid(ids: string[]) {
+    setAllRows((prev) => prev.map((row) => (ids.includes(row.id) ? { ...row, status: 'paid' as const } : row)))
+  }
+
   function pay(row: AdminPayrollRow) {
-    setOverrides((prev) => ({ ...prev, [row.id]: 'paid' }))
+    markPaid([row.id])
     toast('Payout sent', { description: `${naira(row.net)} transferred to ${row.teacher}.`, tone: 'success' })
   }
 
   function payAll() {
     if (!due.length) return
-    setOverrides((prev) => {
-      const next = { ...prev }
-      due.forEach((row) => {
-        next[row.id] = 'paid'
-      })
-      return next
-    })
+    markPaid(due.map((row) => row.id))
     toast('Payroll processed', { description: `${naira(dueTotal)} released to ${due.length} teachers and specialists.`, tone: 'success' })
   }
 
@@ -1069,9 +1358,10 @@ export function AdminPayroll() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Select label="Payroll period" value={period} onChange={(e) => setPeriod(e.target.value)} className="sm:w-52">
-          <option>October 2026</option>
-          <option>September 2026</option>
           <option>All periods</option>
+          {periods.map((value) => (
+            <option key={value}>{value}</option>
+          ))}
         </Select>
         <Button size="sm" variant="role" onClick={payAll} disabled={!due.length}>
           <Wallet size={13} /> Process all due
@@ -1152,6 +1442,7 @@ export function AdminPayroll() {
 
 export function AdminReports() {
   const toast = useToast()
+  const live = useAdminLive()
 
   return (
     <ConsolePage
@@ -1161,8 +1452,13 @@ export function AdminReports() {
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Report templates" value={reportCatalogue.length} icon={FileText} sub="Ready to generate" />
-        <StatCard label="Scheduled" value={4} icon={Clock} sub="Weekly and monthly" />
-        <StatCard label="Last run" value="2 Nov" icon={CheckCircle2} sub="Support complaints log" />
+        <StatCard label="Scheduled" value={live ? '—' : 4} icon={Clock} sub={live ? 'No schedules recorded' : 'Weekly and monthly'} />
+        <StatCard
+          label="Last run"
+          value={live ? '—' : '2 Nov'}
+          icon={CheckCircle2}
+          sub={live ? 'No export runs recorded' : 'Support complaints log'}
+        />
         <StatCard label="Formats" value="PDF · CSV" icon={Download} sub="XLSX for finance" />
       </div>
 
@@ -1200,6 +1496,13 @@ export function AdminReports() {
       </div>
 
       <SectionCard title="Recent downloads" subtitle="Exports produced by the admin team" icon={Download}>
+        {live ? (
+          <EmptyState
+            emoji="📥"
+            title="Export history isn't connected"
+            description="Generated files are not stored yet, so there is no download history to show."
+          />
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[620px] text-left">
             <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -1232,6 +1535,7 @@ export function AdminReports() {
             </tbody>
           </table>
         </div>
+        )}
       </SectionCard>
     </ConsolePage>
   )
@@ -1243,12 +1547,19 @@ type FeedbackTab = 'all' | FeedbackStatus
 
 export function AdminFeedback() {
   const toast = useToast()
-  const [overrides, setOverrides] = useStored<Record<string, FeedbackStatus>>(FEEDBACK_KEY, () => ({}))
+  const live = useAdminLive()
+  const [items, setItems] = useAdminDoc<FeedbackItem[]>({
+    collection: 'feedback',
+    id: 'responses',
+    seed: () => seedFeedback.map((item) => ({ ...item })),
+    empty: () => [],
+    storageKey: FEEDBACK_KEY,
+    live,
+  })
   const [tab, setTab] = useState<FeedbackTab>('all')
   const [query, setQuery] = useState('')
 
-  const items = seedFeedback.map((item) => ({ ...item, status: overrides[item.id] ?? item.status }))
-  const average = items.reduce((sum, item) => sum + item.rating, 0) / items.length
+  const average = items.length ? items.reduce((sum, item) => sum + item.rating, 0) / items.length : 0
   const distribution = [5, 4, 3, 2, 1].map((rating) => ({
     rating,
     count: items.filter((item) => item.rating === rating).length,
@@ -1262,8 +1573,8 @@ export function AdminFeedback() {
     return inTab && inQuery
   })
 
-  function setStatus(item: (typeof items)[number], status: FeedbackStatus) {
-    setOverrides((prev) => ({ ...prev, [item.id]: status }))
+  function setStatus(item: FeedbackItem, status: FeedbackStatus) {
+    setItems((prev) => prev.map((row) => (row.id === item.id ? { ...row, status } : row)))
     toast(status === 'actioned' ? 'Feedback actioned' : 'Marked as reviewed', {
       description: `${item.author}’s feedback is now ${status}.`,
       tone: 'success',
@@ -1280,7 +1591,12 @@ export function AdminFeedback() {
         <StatCard label="Average rating" value={average.toFixed(1)} icon={Star} sub={`${items.length} responses`} />
         <StatCard label="New feedback" value={items.filter((item) => item.status === 'new').length} icon={Mail} sub="Awaiting review" />
         <StatCard label="Actioned" value={items.filter((item) => item.status === 'actioned').length} icon={CheckCircle2} sub="Changes shipped" />
-        <StatCard label="Response rate" value="87%" icon={TrendingUp} trend={{ value: '6%' }} sub="vs last month" />
+        <StatCard
+          label="Response rate"
+          value={`${items.length ? Math.round((items.filter((item) => item.status !== 'new').length / items.length) * 100) : 0}%`}
+          icon={TrendingUp}
+          sub="Feedback triaged"
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -1297,7 +1613,11 @@ export function AdminFeedback() {
               <div key={row.rating} className="flex items-center gap-2">
                 <span className="w-3 text-[10px] font-semibold text-muted-foreground">{row.rating}</span>
                 <Star size={10} className="fill-amber-400 text-amber-400" />
-                <ProgressBar value={(row.count / items.length) * 100} className="flex-1" label={`${row.rating} star responses`} />
+                <ProgressBar
+                  value={items.length ? (row.count / items.length) * 100 : 0}
+                  className="flex-1"
+                  label={`${row.rating} star responses`}
+                />
                 <span className="w-4 text-right text-[10px] text-muted-foreground">{row.count}</span>
               </div>
             ))}
@@ -1351,7 +1671,15 @@ export function AdminFeedback() {
                 ))}
               </div>
             ) : (
-              <EmptyState emoji="💬" title="No feedback matches" description="Try another filter or search term." />
+              <EmptyState
+                emoji="💬"
+                title={items.length ? 'No feedback matches' : 'No feedback yet'}
+                description={
+                  items.length
+                    ? 'Try another filter or search term.'
+                    : 'Responses submitted from the dashboards will appear here for triage.'
+                }
+              />
             )}
           </div>
         </SectionCard>
@@ -1451,6 +1779,39 @@ export function AdminSupport() {
     }))
     return [...local, ...seeds]
   }, [queue, loadingQueue, demoComplaints, overrides])
+
+  const responseHealth = useMemo(() => {
+    if (!queue) {
+      return [
+        { label: 'Median first response', value: '11 min', pct: 88 },
+        { label: 'Within SLA', value: '92%', pct: 92 },
+        { label: 'Resolved same day', value: '74%', pct: 74 },
+        { label: 'Reopened tickets', value: '6%', pct: 6 },
+      ]
+    }
+    const replied = queue.filter((ticket) => ticket.repliedAt)
+    const minutes = replied
+      .map(
+        (ticket) =>
+          (new Date(ticket.repliedAt as string).getTime() - new Date(ticket.createdAt).getTime()) / 60_000,
+      )
+      .filter((value) => Number.isFinite(value) && value >= 0)
+      .sort((a, b) => a - b)
+    const median = minutes.length ? minutes[Math.floor(minutes.length / 2)] : null
+    const within = minutes.filter((value) => value <= 30).length
+    const resolved = queue.filter((ticket) => ticket.status === 'resolved').length
+    const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0)
+    return [
+      {
+        label: 'Median first response',
+        value: median === null ? '—' : `${Math.round(median)} min`,
+        pct: median === null ? 0 : Math.max(0, Math.round(100 - (median / 30) * 100)),
+      },
+      { label: 'Within SLA', value: `${pct(within, minutes.length)}%`, pct: pct(within, minutes.length) },
+      { label: 'Resolved', value: `${pct(resolved, queue.length)}%`, pct: pct(resolved, queue.length) },
+      { label: 'Tickets answered', value: `${replied.length}/${queue.length}`, pct: pct(replied.length, queue.length) },
+    ]
+  }, [queue])
 
   const needle = query.trim().toLowerCase()
   const visible = tickets.filter((ticket) => {
@@ -1608,12 +1969,7 @@ export function AdminSupport() {
         <div className="space-y-5">
           <SectionCard title="Response health" subtitle="Against the 30-minute first-reply target" icon={Clock}>
             <div className="space-y-3">
-              {[
-                { label: 'Median first response', value: '11 min', pct: 88 },
-                { label: 'Within SLA', value: '92%', pct: 92 },
-                { label: 'Resolved same day', value: '74%', pct: 74 },
-                { label: 'Reopened tickets', value: '6%', pct: 6 },
-              ].map((row) => (
+              {responseHealth.map((row) => (
                 <div key={row.label}>
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="font-semibold text-foreground">{row.label}</span>
@@ -1708,14 +2064,30 @@ const DEMO_KEYS = [TASKS_KEY, PRODUCTS_KEY, INVOICES_KEY, PAYROLL_KEY, FEEDBACK_
 
 export function AdminSettings() {
   const toast = useToast()
-  const [settings, setSettings] = useStored<AdminSettingsState>(SETTINGS_KEY, () => ({ ...defaultSettings }))
+  const live = useAdminLive()
+  const [settings, setSettings] = useAdminDoc<AdminSettingsState>({
+    collection: 'settings',
+    id: 'platform',
+    seed: () => ({ ...defaultSettings }),
+    empty: () => ({ ...defaultSettings }),
+    storageKey: SETTINGS_KEY,
+    live,
+  })
   const [confirmReset, setConfirmReset] = useState(false)
 
   function update<K extends keyof AdminSettingsState>(key: K, value: AdminSettingsState[K]) {
     setSettings((prev) => ({ ...prev, [key]: value }))
   }
 
-  function save() {
+  async function save() {
+    if (live) {
+      const ok = await saveAdminDocument('settings', 'platform', settings)
+      toast(ok ? 'Settings saved' : 'Settings not saved', {
+        description: ok ? 'Every administrator sees these preferences.' : 'The console could not reach the database.',
+        tone: ok ? 'success' : 'warn',
+      })
+      return
+    }
     toast('Settings saved', { description: 'Admin manager preferences are up to date.', tone: 'success' })
   }
 
@@ -1844,30 +2216,34 @@ export function AdminSettings() {
       <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="text-xs font-bold text-foreground">Save your admin preferences</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Changes apply to this browser immediately.</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {live ? 'Saved to the admin console for every administrator.' : 'Changes apply to this browser immediately.'}
+          </p>
         </div>
-        <Button variant="role" onClick={save}>
+        <Button variant="role" onClick={() => void save()}>
           <CheckCircle2 size={14} /> Save settings
         </Button>
       </Card>
 
-      <Card className="border-destructive/25 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-destructive" />
-            <div>
-              <p className="text-xs font-bold text-foreground">Reset demo data</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                Restore tasks, products, invoices, payroll, feedback and support tickets to their seed state. This cannot
-                be undone.
-              </p>
+      {!live ? (
+        <Card className="border-destructive/25 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-destructive" />
+              <div>
+                <p className="text-xs font-bold text-foreground">Reset demo data</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                  Restore tasks, products, invoices, payroll, feedback and support tickets to their seed state. This
+                  cannot be undone.
+                </p>
+              </div>
             </div>
+            <Button variant="danger" onClick={() => setConfirmReset(true)}>
+              <RotateCcw size={14} /> Reset demo data
+            </Button>
           </div>
-          <Button variant="danger" onClick={() => setConfirmReset(true)}>
-            <RotateCcw size={14} /> Reset demo data
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
 
       <Modal
         open={confirmReset}

@@ -16,7 +16,7 @@ export interface AdminTask {
   area: TaskArea
   title: string
   requester: string
-  requesterRole: 'Teacher' | 'Tutor' | 'Parent'
+  requesterRole: 'Teacher' | 'Tutor' | 'Parent' | 'Student'
   detail: string
   opened: string
   due: string
